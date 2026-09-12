@@ -1,0 +1,50 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  darkMode: 'class',
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  theme: {
+    extend: {
+      colors: {
+        primary: '#3a47d1',
+        'primary-container': '#5562eb',
+        'electric-yellow': '#FFD600',
+        'motivation-orange': '#FF8A00',
+        'success-green': '#7AC17B',
+        'sky-active': '#00A3FF',
+        background: '#f9f9ff',
+        surface: '#f9f9ff',
+        'surface-container-low': '#eff3ff',
+        'surface-container': '#eef3ff',
+        'surface-container-high': '#e7edff',
+        'on-surface': '#171c24',
+        'on-surface-variant': '#454654',
+        'on-background': '#171c24',
+        'on-primary': '#ffffff',
+        'on-primary-container': '#f9f6ff',
+        secondary: '#575e70',
+        'secondary-container': '#dbe2f8',
+        outline: '#dfe6ff',
+        'outline-variant': '#c6c5d7',
+        error: '#ba1a1a',
+        'success': '#7AC17B',
+        'warning': '#FF8A00',
+        'info': '#00A3FF',
+      },
+      fontFamily: {
+        sans: ['Plus Jakarta Sans', 'Inter', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
+      boxShadow: {
+        glow: '0 0 20px rgba(85, 98, 235, 0.15)',
+        xp: '0 0 15px rgba(255, 214, 0, 0.4)',
+      },
+      borderRadius: {
+        DEFAULT: '1rem',
+        lg: '2rem',
+        xl: '3rem',
+        full: '9999px',
+      },
+    },
+  },
+  plugins: [],
+};

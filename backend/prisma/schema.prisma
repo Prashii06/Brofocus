@@ -1,0 +1,168 @@
+// BroFocus Backend - Prisma schema
+// Target: Supabase Postgres
+// Field names intentionally match the original TS interfaces (snake_case for
+// pre-existing fields) so route files only need `await` added, not renamed
+// property access. New fields (googleId, authProvider) use camelCase to match
+// what routes/auth.ts already expects.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled connection (pgbouncer, port 6543) - runtime
+  directUrl = env("DIRECT_URL")   // direct connection (port 5432) - migrations only
+}
+
+// ─── Enums ─────────────────────────────────────────────────────────────────
+
+enum AuthProvider {
+  demo
+  google
+}
+
+enum TaskStatus {
+  pending
+  in_progress
+  completed
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum NotificationType {
+  info
+  success
+  warning
+  error
+  ai
+}
+
+enum TimeBlockType {
+  task
+  meeting
+  focus
+  break
+}
+
+enum IntegrationProvider {
+  gmail
+  google_calendar
+  google_drive
+  google_meet
+}
+
+// ─── Models ────────────────────────────────────────────────────────────────
+
+model User {
+  id                  String   @id @default(uuid())
+  email               String   @unique
+  name                String
+  avatar              String?
+  productivity_points Int      @default(0)
+  level               Int      @default(1)
+  whitelisted         Boolean  @default(false)
+  googleId            String?  @unique
+  authProvider        AuthProvider @default(google)
+  created_at          DateTime @default(now())
+
+  refreshTokens RefreshToken[]
+  tasks         Task[]
+  notifications Notification[]
+  focusSessions FocusSession[]
+  timeBlocks    TimeBlock[]
+  integrations  Integration[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  token_hash String   @unique
+  user_id    String
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  expires_at DateTime
+  revoked    Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  @@index([user_id])
+  @@map("refresh_tokens")
+}
+
+model Task {
+  id          String       @id @default(uuid())
+  title       String
+  description String?
+  priority    TaskPriority
+  status      TaskStatus   @default(pending)
+  due_date    String?
+  xp_awarded  Boolean      @default(false)
+  user_id     String
+  user        User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  created_at  DateTime     @default(now())
+  updated_at  DateTime     @updatedAt
+
+  @@index([user_id])
+  @@map("tasks")
+}
+
+model Notification {
+  id         String           @id @default(uuid())
+  user_id    String
+  user       User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  type       NotificationType
+  title      String
+  message    String
+  read       Boolean          @default(false)
+  created_at DateTime         @default(now())
+
+  @@index([user_id])
+  @@map("notifications")
+}
+
+model FocusSession {
+  id                 String   @id @default(uuid())
+  user_id            String
+  user               User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  date               String
+  focus_hours        Float
+  tasks_completed    Int
+  productivity_score Int
+
+  @@index([user_id])
+  @@map("focus_sessions")
+}
+
+model TimeBlock {
+  id      String        @id @default(uuid())
+  user_id String
+  user    User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  title   String
+  start   String
+  end     String
+  type    TimeBlockType
+  color   String?
+  task_id String?
+
+  @@index([user_id])
+  @@map("time_blocks")
+}
+
+model Integration {
+  id              String              @id @default(uuid())
+  user_id         String
+  user            User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  provider        IntegrationProvider
+  connected       Boolean             @default(false)
+  email           String?
+  connected_at    DateTime?
+  encrypted_token String? // AES-256-GCM encrypted refresh token for this provider
+
+  @@unique([user_id, provider])
+  @@map("integrations")
+}
