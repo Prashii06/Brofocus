@@ -2,7 +2,7 @@
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { authenticate } from '../middleware/auth';
-import { encrypt } from '../lib/crypto';
+import { decrypt, encrypt } from '../lib/crypto';
 import { store, IntegrationProvider } from '../store/inMemory';
 
 const router = Router();
@@ -145,8 +145,20 @@ router.get('/callback', async (req: Request, res: Response) => {
       });
     }
 
-    const tokenToStore = tokenData.refresh_token || tokenData.access_token;
-    if (!tokenToStore) {
+    const existingIntegration = await store.getIntegration(userId, provider);
+    const previousEncryptedToken = existingIntegration?.encrypted_token;
+    let previousToken: { refresh_token?: string } = {};
+    if (previousEncryptedToken) {
+      try {
+        const parsed = JSON.parse(decrypt(previousEncryptedToken)) as { refresh_token?: string };
+        previousToken = parsed;
+      } catch {
+        previousToken = { refresh_token: decrypt(previousEncryptedToken) };
+      }
+    }
+
+    const refreshToken = tokenData.refresh_token || previousToken.refresh_token;
+    if (!refreshToken && !tokenData.access_token) {
       return res.status(400).json({ error: 'Google OAuth response did not include any token to persist.' });
     }
 
@@ -156,7 +168,11 @@ router.get('/callback', async (req: Request, res: Response) => {
       connected: true,
       email: decodedIdToken?.email ?? null,
       connected_at: new Date(),
-      encrypted_token: encrypt(tokenToStore),
+      encrypted_token: encrypt(JSON.stringify({
+        refresh_token: refreshToken,
+        access_token: tokenData.access_token,
+        expires_at: tokenData.expires_in ? Date.now() + Number(tokenData.expires_in) * 1000 : undefined,
+      })),
     });
 
     return res.redirect(`${frontendUrl}/integrations?connected=${provider}`);

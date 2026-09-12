@@ -16,6 +16,7 @@ import { Engagement } from './pages/Engagement';
 import { Landing } from './pages/Landing';
 import { Profile } from './pages/Profile';
 import { Settings } from './pages/Settings';
+import FloatingChatbot from './components/ui/FloatingChatbot';
 import { useAppStore } from './store/useAppStore';
 
 const queryClient = new QueryClient({
@@ -85,6 +86,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           {children}
         </main>
       </div>
+      <FloatingChatbot />
       <ToastOverlay />
     </div>
   );

@@ -40,14 +40,15 @@ export const Integrations: React.FC = () => {
   // Connect mutation
   const connectMutation = useMutation({
     mutationFn: (provider: string) => integrationsApi.connectProvider(provider),
-    onSuccess: (_, provider) => {
-      addNotification({
-        title: 'Integration Connected',
-        message: `Successfully connected ${provider.replace('_', ' ')}. AI context sync enabled.`,
-        type: 'success',
-      });
-      queryClient.invalidateQueries({ queryKey: ['integrations-status'] });
-      setSelectedProviderModal(null);
+    onSuccess: (data) => {
+      if (!data?.auth_url) {
+        addNotification({ title: 'Connection failed', message: 'The server did not return a Google authorization URL.', type: 'error' });
+        return;
+      }
+      window.location.assign(data.auth_url);
+    },
+    onError: (error: any) => {
+      addNotification({ title: 'Connection failed', message: error?.response?.data?.error || 'Google OAuth could not be started.', type: 'error' });
     },
   });
 

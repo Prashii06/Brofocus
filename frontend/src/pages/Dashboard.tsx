@@ -12,7 +12,6 @@ import { useAppStore } from '../store/useAppStore';
 import { KanbanData, MorningKickoff } from '../types';
 import ProductivityBar from '../components/ui/ProductivityBar';
 import TaskCard from '../components/ui/TaskCard';
-import FloatingChatbot from '../components/ui/FloatingChatbot';
 
 export const Dashboard: React.FC = () => {
 
@@ -417,7 +416,6 @@ export const Dashboard: React.FC = () => {
             </motion.div>
           </div>
         </div>
-        <FloatingChatbot />
       </div>
     </>
   );

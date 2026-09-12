@@ -29,6 +29,12 @@ export interface CalendarEventInput {
   attendees?: string[];
 }
 
+interface StoredGoogleToken {
+  refresh_token?: string;
+  access_token?: string;
+  expires_at?: number;
+}
+
 class WorkspaceAuthError extends Error {
   constructor(message = 'Google Workspace is not connected') {
     super(message);
@@ -45,7 +51,22 @@ async function getGoogleAccessToken(userId: string, provider: 'gmail' | 'google_
     throw new WorkspaceAuthError(`Connect ${provider === 'gmail' ? 'Gmail' : 'Google Calendar'} in Integrations first.`);
   }
 
-  const storedToken = decrypt(integration.encrypted_token);
+  const decryptedToken = decrypt(integration.encrypted_token);
+  let storedToken: StoredGoogleToken;
+  try {
+    storedToken = JSON.parse(decryptedToken) as StoredGoogleToken;
+  } catch {
+    storedToken = { refresh_token: decryptedToken };
+  }
+
+  if (storedToken.access_token && storedToken.expires_at && storedToken.expires_at > Date.now() + 60_000) {
+    return storedToken.access_token;
+  }
+
+  if (!storedToken.refresh_token) {
+    throw new WorkspaceAuthError('Google authorization is incomplete. Reconnect the integration.');
+  }
+
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
     throw new WorkspaceAuthError('Google OAuth client credentials are not configured.');
   }
@@ -56,7 +77,7 @@ async function getGoogleAccessToken(userId: string, provider: 'gmail' | 'google_
     body: new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
       client_secret: GOOGLE_CLIENT_SECRET,
-      refresh_token: storedToken,
+      refresh_token: storedToken.refresh_token,
       grant_type: 'refresh_token',
     }),
   });
@@ -66,7 +87,7 @@ async function getGoogleAccessToken(userId: string, provider: 'gmail' | 'google_
     if (refreshed.access_token) return refreshed.access_token;
   }
 
-  return storedToken;
+  throw new WorkspaceAuthError('Google authorization expired. Reconnect the integration.');
 }
 
 async function googleRequest<T>(url: string, init: RequestInit, userId: string, provider: 'gmail' | 'google_calendar'): Promise<T> {
