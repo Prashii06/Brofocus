@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Task, User, Notification, ChatMessage, KanbanData } from '../types';
-import { authApi } from '../api/client';
+import { authApi, engagementApi } from '../api/client';
 
 interface AppState {
   // Auth
@@ -83,6 +83,7 @@ export const useAppStore = create<AppState>()(
           const res = await authApi.me();
           if (res?.user) {
             set({ user: res.user, isAuthenticated: true, authLoading: false });
+            void engagementApi.autoSync().catch(() => undefined);
           } else {
             set({ isAuthenticated: false, authLoading: false });
           }
@@ -99,13 +100,15 @@ export const useAppStore = create<AppState>()(
           const res = await authApi.google(credential);
           get().setToken(res.access_token);
           set({ user: res.user, isAuthenticated: true, authLoading: false });
+          void engagementApi.autoSync().catch(() => undefined);
           return { ok: true };
         } catch (err: any) {
           const message =
             err?.response?.data?.error ||
             'Google sign-in failed. Please try again.';
+          const details = err?.response?.data?.details;
           set({ authError: message });
-          return { ok: false, error: message };
+          return { ok: false, error: details ? `${message}: ${details}` : message };
         }
       },
       setUser: (user) => set({ user }),
@@ -156,7 +159,7 @@ export const useAppStore = create<AppState>()(
       // Notifications
       setNotifications: (notifications) =>
         set({
-          notifications,
+          notifications: notifications.slice(0, 50),
           unreadCount: notifications.filter((n) => !n.read).length,
         }),
       addNotification: (notification) => {
@@ -170,7 +173,9 @@ export const useAppStore = create<AppState>()(
           read: notification.read || false,
           created_at: notification.created_at || new Date().toISOString(),
         };
-        const updated = [fullNotification, ...notifications];
+        const duplicate = notifications.some((item) => item.title === fullNotification.title && item.message === fullNotification.message);
+        if (duplicate) return;
+        const updated = [fullNotification, ...notifications].slice(0, 50);
         set({
           notifications: updated,
           unreadCount: updated.filter((n) => !n.read).length,
@@ -234,6 +239,7 @@ export const useAppStore = create<AppState>()(
           user: null,
           token: null,
           isAuthenticated: false,
+          authLoading: false,
           tasks: null,
           notifications: [],
           chatMessages: [],

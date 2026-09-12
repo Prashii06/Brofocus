@@ -1,10 +1,11 @@
 // BroFocus - Top Bar Component
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, Search, X, Check, Cpu, Menu } from 'lucide-react';
+import { Bell, Search, X, Check, Menu, LogOut, ChevronDown, User, Settings } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { format } from 'date-fns';
 import BrandLogo from '../ui/BrandLogo';
+import { signOutCurrentUser } from '../../utils/auth';
 
 interface TopBarProps {
   title?: string;
@@ -13,9 +14,17 @@ interface TopBarProps {
 
 export const TopBar: React.FC<TopBarProps> = ({ title = 'BroFocus', subtitle }) => {
 
-  const { notifications, unreadCount, markNotificationRead } = useAppStore();
+  const { notifications, unreadCount, markNotificationRead, user, logout } = useAppStore();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [searchValue, setSearchValue] = useState('');
+
+  const handleSignOut = async () => {
+    setShowProfileMenu(false);
+    await signOutCurrentUser();
+    logout();
+    window.location.href = '/landing';
+  };
 
   const notifTypeColors: Record<string, string> = {
     info: 'text-cyan-400',
@@ -63,17 +72,6 @@ export const TopBar: React.FC<TopBarProps> = ({ title = 'BroFocus', subtitle }) 
             className="pl-9 pr-4 py-2 w-48 text-sm h-9 rounded-full border border-[#dfe6ff] bg-white/60 text-on-surface placeholder:text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
         </div>
-
-        {/* AI Shortcut */}
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="btn-primary py-2 px-3 text-sm gap-2 hidden sm:flex"
-          onClick={() => window.location.href = '/assistant'}
-        >
-          <Cpu className="w-4 h-4" />
-          <span className="hidden lg:inline">Ask AI</span>
-        </motion.button>
 
         <div className="hidden items-center gap-2 rounded-full border border-motivation-orange/20 bg-motivation-orange/10 px-3 py-1.5 text-sm font-bold text-motivation-orange sm:flex">
           <span className="text-base">12</span>
@@ -152,6 +150,71 @@ export const TopBar: React.FC<TopBarProps> = ({ title = 'BroFocus', subtitle }) 
                     ))
                   )}
                 </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowProfileMenu((value) => !value)}
+            className="flex items-center gap-2 rounded-full border border-[#dfe6ff] bg-white/80 px-2 py-1.5 shadow-sm transition hover:bg-white"
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary to-sky-active text-xs font-bold text-white">
+              {user?.name?.[0]?.toUpperCase() || 'B'}
+            </div>
+            <div className="hidden text-left lg:block">
+              <div className="text-[11px] font-semibold text-on-surface">{user?.name || 'BroFocus User'}</div>
+              <div className="text-[9px] text-on-surface-variant">Level {user?.level || 1}</div>
+            </div>
+            <ChevronDown className="h-4 w-4 text-on-surface-variant" />
+          </button>
+
+          <AnimatePresence>
+            {showProfileMenu && (
+              <motion.div
+                initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                className="absolute right-0 top-12 w-52 overflow-hidden rounded-2xl border border-[#dfe6ff] bg-white/95 shadow-2xl backdrop-blur-xl z-50"
+              >
+                <div className="border-b border-[#edf1ff] px-3 py-2.5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary to-sky-active text-xs font-bold text-white">
+                      {user?.name?.[0]?.toUpperCase() || 'B'}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-on-surface">{user?.name || 'BroFocus User'}</p>
+                      <p className="truncate text-[11px] text-on-surface-variant">{user?.email || 'bro@brofocus.ai'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => window.location.href = '/profile'}
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-on-surface transition hover:bg-slate-50"
+                >
+                  <User className="h-4 w-4" />
+                  Profile
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.location.href = '/settings'}
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-on-surface transition hover:bg-slate-50"
+                >
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="flex w-full items-center gap-2 border-t border-[#edf1ff] px-3 py-2.5 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
+                </button>
               </motion.div>
             )}
           </AnimatePresence>

@@ -82,8 +82,12 @@ router.post('/google', authLimiter, async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('[auth/google] verification failed:', (err as Error).message);
-    return res.status(401).json({ error: 'Google authentication failed' });
+    const error = err as Error;
+    console.error('[auth/google] verification failed:', error.message);
+    return res.status(401).json({
+      error: 'Google authentication failed',
+      ...(process.env.NODE_ENV === 'development' ? { details: error.message } : {}),
+    });
   }
 });
 

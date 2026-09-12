@@ -23,7 +23,7 @@ if (AI_AVAILABLE && GEMINI_API_KEY) {
   };
 
   chatModel = genAI.getGenerativeModel({
-    model: 'gemini-1.5-flash',
+    model: 'gemini-3.6-flash',
     generationConfig,
     systemInstruction: `You are BroFocus AI — a highly capable, motivating AI productivity assistant.
 Your personality: concise, energetic, action-oriented, like a brilliant productivity coach.
@@ -39,31 +39,31 @@ Keep responses concise unless detail is explicitly requested.`,
   });
 
   publicChatModel = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.6-flash',
     generationConfig: {
       temperature: 0.7,
       topP: 0.9,
       maxOutputTokens: 300,
     },
     systemInstruction: `You are BroBot, the interactive AI Assistant on the public landing page for BroFocus.
-Your goal is to answer visitor questions, explain how BroFocus works, highlight key features, and encourage visitors to sign up or log in.
+Your goal is to explain how to use BroFocus, how its features work, and how it helps people plan focus time, manage tasks, and stay productive.
 
 Always maintain an energetic, motivating, and helpful tone (the "BroFocus vibe"). Keep answers concise, 2-4 sentences maximum.
 
 Knowledge Base / FAQ:
-1. BroFocus is an intelligent, gamified productivity platform combining schedule planning, Kanban task execution, and automated AI assistance.
-2. The Daily Frog concept means tackling the single highest-stakes, high-priority obstacle before smaller distractions.
-3. Google OAuth connects Gmail and Google Calendar so BroFocus can extract tasks, detect schedule conflicts, and rebalance the day.
+1. BroFocus helps people plan work, manage tasks, protect deep-focus time, and track progress with AI-guided scheduling.
+2. The Daily Frog concept means tackling the single highest-stakes, highest-priority task before smaller distractions.
+3. BroFocus combines a Kanban board, calendar-style planning, and AI suggestions to keep a day balanced and realistic.
 4. Completing tasks earns XP, builds a daily streak, and fills the Productivity Bar as users level up.
-5. BroFocus supports voice commands, text-to-speech, and computer vision for screenshots, documents, and code snippets.
-6. BroFocus has a free individual productivity tier, with premium tiers unlocking deeper contextual scanning and advanced AI capabilities.
-7. Visitors get started by clicking Continue with Google on the login page to authenticate and build a focus schedule.
+5. BroFocus can connect to Google Workspace so it can read Gmail and Calendar signals, spot conflicts, and suggest smarter scheduling.
+6. BroFocus supports simple usage flows such as creating tasks, reviewing priorities, planning blocks, and following daily momentum.
+7. If a visitor asks for anything outside BroFocus usage, politely redirect them back to productivity, task planning, and focus.
 
-Only describe features represented in this knowledge base. If a question is unrelated, briefly steer it back to BroFocus.`,
+Do not mention sign-in, login, sign up, or user accounts unless the user explicitly asks about how to access the product. Keep the conversation focused on usage, features, and productivity guidance.`,
   });
 
   workspaceModel = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.6-flash',
     generationConfig: { temperature: 0.4, topP: 0.9, maxOutputTokens: 700 },
     tools: [{ functionDeclarations: [
       {
@@ -86,16 +86,31 @@ Only describe features represented in this knowledge base. If a question is unre
         description: 'Prepare a proposed BroFocus task. Never create it directly; the application will ask the user for confirmation first.',
         parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' }, description: { type: 'STRING' }, priority: { type: 'STRING', enum: ['low', 'medium', 'high', 'urgent'] }, due_date: { type: 'STRING' } }, required: ['title'] },
       },
+      {
+        name: 'create_gmail_draft',
+        description: 'Create a Gmail draft only. Never send it. Use when the user asks to draft an email based on context.',
+        parameters: { type: 'OBJECT', properties: { to: { type: 'STRING' }, subject: { type: 'STRING' }, body: { type: 'STRING' } }, required: ['to', 'subject', 'body'] },
+      },
+      {
+        name: 'update_task',
+        description: 'Move an existing BroFocus task between pending, in_progress, and completed when the user explicitly asks.',
+        parameters: { type: 'OBJECT', properties: { task_id: { type: 'STRING' }, status: { type: 'STRING', enum: ['pending', 'in_progress', 'completed'] } }, required: ['task_id', 'status'] },
+      },
+      {
+        name: 'create_time_block',
+        description: 'Prepare a focus, task, meeting, or break slot in the BroFocus schedule. The user must confirm before saving it.',
+        parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' }, start: { type: 'STRING' }, end: { type: 'STRING' }, type: { type: 'STRING', enum: ['task', 'meeting', 'focus', 'break'] }, color: { type: 'STRING' } }, required: ['title', 'start', 'end', 'type'] },
+      },
     ] }],
     systemInstruction: `You are BroFocus Workspace AI, an action-oriented productivity assistant.
 Use search_gmail and get_calendar_events to answer questions about the user's connected Google Workspace data.
-Use create_calendar_event or create_task only when the user clearly requests a mutation. Those tools create a proposal only; the application will require explicit confirmation before committing it.
+Use create_calendar_event, create_task, and create_time_block only when the user clearly requests a mutation. Those tools create a proposal only; the application will require explicit confirmation before committing it. Use create_gmail_draft to save a draft, never send an email. Use update_task only when the user explicitly asks to move a task.
 Never claim an event or task was created unless a confirmed mutation result is provided.
 Be concise, mention missing Gmail/Calendar connections clearly, and never reveal access tokens or private implementation details.`,
   } as any);
 
   visionModel = genAI.getGenerativeModel({
-    model: 'gemini-1.5-flash',
+    model: 'gemini-3.6-flash',
     generationConfig,
   });
 }
@@ -139,7 +154,7 @@ export interface ChatMessage {
   content: string;
 }
 
-export const WORKSPACE_TOOL_NAMES = ['search_gmail', 'get_calendar_events', 'create_calendar_event', 'create_task'] as const;
+export const WORKSPACE_TOOL_NAMES = ['search_gmail', 'get_calendar_events', 'create_calendar_event', 'create_task', 'create_gmail_draft', 'update_task', 'create_time_block'] as const;
 export type WorkspaceToolName = typeof WORKSPACE_TOOL_NAMES[number];
 
 export interface WorkspaceToolCall {
@@ -157,7 +172,10 @@ export async function processWorkspaceChat(
   }
 
   try {
-    const chat = workspaceModel.startChat({ history: history.map((item) => ({ role: item.role, parts: [{ text: item.content }] })) });
+    const normalizedHistory = history.filter((item) => item.content.trim().length > 0);
+    const firstUserIndex = normalizedHistory.findIndex((item) => item.role === 'user');
+    const chatHistory = firstUserIndex >= 0 ? normalizedHistory.slice(firstUserIndex) : [];
+    const chat = workspaceModel.startChat({ history: chatHistory.map((item) => ({ role: item.role, parts: [{ text: item.content }] })) });
     const first = await chat.sendMessage(message);
     const functionCall = (first.response as any).functionCalls?.()?.[0] as { name?: string; args?: Record<string, unknown> } | undefined;
     if (!functionCall?.name || !WORKSPACE_TOOL_NAMES.includes(functionCall.name as WorkspaceToolName)) {
@@ -166,15 +184,20 @@ export async function processWorkspaceChat(
 
     const toolCall = { name: functionCall.name as WorkspaceToolName, args: functionCall.args || {} };
     const toolResult = await onToolCall(toolCall);
-    if (toolCall.name === 'create_calendar_event' || toolCall.name === 'create_task') {
+    if (toolCall.name === 'create_calendar_event' || toolCall.name === 'create_task' || toolCall.name === 'create_time_block') {
       return { response: 'I prepared this action for your confirmation. Nothing has been changed yet.', ai_used: true, proposal: toolResult };
     }
 
-    const second = await chat.sendMessage([{ functionResponse: { name: toolCall.name, response: toolResult as object } }]);
+    const second = await chat.sendMessage(
+      `The ${toolCall.name} tool returned this data. Use it to answer the user's request accurately. Do not call another tool for this turn.\n${JSON.stringify(toolResult)}`,
+    );
     return { response: second.response.text(), ai_used: true };
   } catch (error) {
     console.error('[GeminiService] Workspace chat error:', error);
-    return { response: 'I could not complete that Workspace request. Check your Google connection and try again.', ai_used: false };
+    if (error instanceof Error && error.name === 'WorkspaceAuthError') {
+      throw error;
+    }
+    return { response: 'I could not complete that Workspace request because the AI service returned an error. Please try again in a moment.', ai_used: false };
   }
 }
 
@@ -235,15 +258,15 @@ function getPublicFallbackResponse(message: string): string {
     return 'BroFocus has a free tier for individual productivity tracking. Premium tiers unlock deeper contextual scanning and advanced AI capabilities.';
   }
   if (question.includes('google') || question.includes('calendar') || question.includes('gmail')) {
-    return 'BroFocus connects through Google OAuth to scan Gmail and Google Calendar, extract tasks, detect conflicts, and rebalance your day.';
+    return 'BroFocus can connect Google Calendar and Gmail to spot conflicts, summarize upcoming work, and help rebalance your day more intelligently.';
   }
-  if (question.includes('start') || question.includes('sign up') || question.includes('login')) {
-    return 'Click Continue with Google on the login page to get started. BroFocus will help you build a focused schedule from there.';
+  if (question.includes('start') || question.includes('how to use') || question.includes('get started') || question.includes('begin')) {
+    return 'Start by creating a few tasks, setting priorities, and using BroFocus to plan your high-impact work blocks before smaller distractions.';
   }
   if (question.includes('xp') || question.includes('streak') || question.includes('game')) {
     return 'Yes, BroFocus is gamified. Completing tasks earns XP, builds your daily streak, and fills your Productivity Bar as you level up.';
   }
-  return 'BroFocus combines AI scheduling, Kanban task execution, and gamification to help you protect your best focus time. Ask me about features, integrations, or getting started.';
+  return 'BroFocus helps you plan work, protect deep-focus time, and turn priorities into daily momentum using AI suggestions, task tracking, and scheduling. Ask me how to use it for planning, focus, or task management.';
 }
 
 export async function webSearch(query: string): Promise<{ result: string; ai_used: boolean }> {
@@ -262,7 +285,7 @@ export async function webSearch(query: string): Promise<{ result: string; ai_use
 
   try {
     const searchModel = genAI!.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3.6-flash',
       tools: [{ googleSearch: {} } as any],
     });
 

@@ -2,9 +2,52 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
 import { store } from '../store/inMemory';
+import { getCalendarEvents, searchGmail, WorkspaceAuthError } from '../services/googleWorkspaceService';
 
 const router = Router();
 router.use(authenticate);
+const activeWorkspaceSyncs = new Set<string>();
+
+router.post('/auto-sync', async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  if (activeWorkspaceSyncs.has(userId)) {
+    return res.json({ status: 'already_syncing' });
+  }
+  activeWorkspaceSyncs.add(userId);
+
+  try {
+  const syncTitle = 'Workspace context refreshed';
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const existingSync = await store.getRecentNotification(userId, syncTitle, startOfDay);
+  if (existingSync) {
+    return res.json({ status: 'already_synced', scanned: { emails: 0, events: 0 } });
+  }
+  const now = new Date();
+  const end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  try {
+    const [emails, events] = await Promise.all([
+      searchGmail(userId, 'newer_than:2d', 10),
+      getCalendarEvents(userId, now.toISOString(), end.toISOString()),
+    ]);
+    await store.createNotification({
+      user_id: userId,
+      type: 'ai',
+      title: syncTitle,
+      message: `BroFocus scanned ${emails.length} recent emails and ${events.length} upcoming calendar events for your kickoff and planning guidance.`,
+    });
+    return res.json({ status: 'success', scanned: { emails: emails.length, events: events.length } });
+  } catch (error) {
+    if (error instanceof WorkspaceAuthError) return res.status(409).json({ error: error.message, code: 'WORKSPACE_AUTH_REQUIRED' });
+    console.error('[Engagement] automatic Workspace sync failed:', error);
+    return res.status(502).json({ error: 'Workspace context could not be refreshed.' });
+  } finally {
+    activeWorkspaceSyncs.delete(userId);
+  }
+  } finally {
+    activeWorkspaceSyncs.delete(userId);
+  }
+});
 
 // GET /api/v1/engagement/morning-kickoff
 router.get('/morning-kickoff', async (req: Request, res: Response) => {

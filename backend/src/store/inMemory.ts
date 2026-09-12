@@ -64,8 +64,19 @@ class PrismaStore {
     name: string;
     picture?: string;
   }): Promise<User> {
+    const adminEmails = (process.env.ADMIN_EMAILS || '')
+      .split(',')
+      .map(e => e.trim().toLowerCase())
+      .filter(Boolean);
+    const isAdmin = adminEmails.includes(profile.email.toLowerCase());
+
     const existingByGoogle = await this.getUserByGoogleId(profile.googleId);
-    if (existingByGoogle) return existingByGoogle;
+    if (existingByGoogle) {
+      if (isAdmin && !existingByGoogle.whitelisted) {
+        return prisma.user.update({ where: { id: existingByGoogle.id }, data: { whitelisted: true } });
+      }
+      return existingByGoogle;
+    }
 
     const existingByEmail = await this.getUserByEmail(profile.email);
     if (existingByEmail) {
@@ -75,15 +86,10 @@ class PrismaStore {
           googleId: profile.googleId,
           authProvider: 'google',
           avatar: existingByEmail.avatar ?? profile.picture,
+          ...(isAdmin ? { whitelisted: true } : {}),
         },
       });
     }
-
-    const adminEmails = (process.env.ADMIN_EMAILS || '')
-      .split(',')
-      .map(e => e.trim().toLowerCase())
-      .filter(Boolean);
-    const isAdmin = adminEmails.includes(profile.email.toLowerCase());
 
     return prisma.user.create({
       data: {
@@ -172,6 +178,22 @@ class PrismaStore {
   getNotifications(userId: string) {
     return prisma.notification.findMany({
       where: { user_id: userId },
+      orderBy: { created_at: 'desc' },
+      take: 50,
+    }).then((notifications) => {
+      const seen = new Set<string>();
+      return notifications.filter((notification) => {
+        const key = `${notification.title}:${notification.message}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    });
+  }
+
+  getRecentNotification(userId: string, title: string, since: Date) {
+    return prisma.notification.findFirst({
+      where: { user_id: userId, title, created_at: { gte: since } },
       orderBy: { created_at: 'desc' },
     });
   }

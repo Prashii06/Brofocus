@@ -1,4 +1,4 @@
-import { decrypt } from '../lib/crypto';
+import { decrypt, encrypt } from '../lib/crypto';
 import { store } from '../store/inMemory';
 
 export interface GmailMessageSummary {
@@ -27,6 +27,12 @@ export interface CalendarEventInput {
   end: string;
   timezone?: string;
   attendees?: string[];
+}
+
+export interface GmailDraftInput {
+  to: string;
+  subject: string;
+  body: string;
 }
 
 interface StoredGoogleToken {
@@ -83,8 +89,18 @@ async function getGoogleAccessToken(userId: string, provider: 'gmail' | 'google_
   });
 
   if (refreshResponse.ok) {
-    const refreshed = await refreshResponse.json() as { access_token?: string };
-    if (refreshed.access_token) return refreshed.access_token;
+    const refreshed = await refreshResponse.json() as { access_token?: string; expires_in?: number };
+    if (refreshed.access_token) {
+      await store.updateIntegration(userId, provider, {
+        connected: true,
+        encrypted_token: encrypt(JSON.stringify({
+          ...storedToken,
+          access_token: refreshed.access_token,
+          expires_at: refreshed.expires_in ? Date.now() + Number(refreshed.expires_in) * 1000 : undefined,
+        })),
+      });
+      return refreshed.access_token;
+    }
   }
 
   throw new WorkspaceAuthError('Google authorization expired. Reconnect the integration.');
@@ -97,6 +113,7 @@ async function googleRequest<T>(url: string, init: RequestInit, userId: string, 
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', ...(init.headers || {}) },
   });
   if (response.status === 401) throw new WorkspaceAuthError('Google authorization expired. Reconnect the integration.');
+  if (response.status === 403) throw new WorkspaceAuthError('Google denied access to this Workspace data. Reconnect the integration and approve the requested permissions.');
   if (!response.ok) throw new Error(`Google API request failed with status ${response.status}`);
   return response.json() as Promise<T>;
 }
@@ -127,6 +144,23 @@ export async function searchGmail(userId: string, query: string, maxResults = 10
       snippet: message.snippet || '',
     };
   });
+}
+
+export async function createGmailDraft(userId: string, input: GmailDraftInput): Promise<{ id: string; message_id?: string }> {
+  const rawMessage = [
+    `To: ${input.to}`,
+    `Subject: ${input.subject}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    '',
+    input.body,
+  ].join('\r\n');
+  const response = await googleRequest<{ id: string; message?: { id: string } }>(
+    'https://gmail.googleapis.com/gmail/v1/users/me/drafts',
+    { method: 'POST', body: JSON.stringify({ message: { raw: Buffer.from(rawMessage).toString('base64url') } }) },
+    userId,
+    'gmail',
+  );
+  return { id: response.id, message_id: response.message?.id };
 }
 
 export async function getCalendarEvents(userId: string, timeMin: string, timeMax: string, query?: string): Promise<CalendarEventSummary[]> {

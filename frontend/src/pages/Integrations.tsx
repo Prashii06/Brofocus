@@ -1,5 +1,5 @@
 // BroFocus - Integrations Hub Page
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -24,10 +24,14 @@ export const Integrations: React.FC = () => {
   const queryClient = useQueryClient();
   const addNotification = useAppStore((state) => state.addNotification);
   const [selectedProviderModal, setSelectedProviderModal] = useState<string | null>(null);
+  const [localStatusOverrides, setLocalStatusOverrides] = useState<Record<string, { connected: boolean; email?: string; connected_at?: string }>>({});
 
   // Query status
-  const { data: statusMap, isLoading } = useQuery({
+  const { data: statusMap, isLoading, refetch } = useQuery({
     queryKey: ['integrations-status'],
+    staleTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const res = await integrationsApi.getStatus();
       return res.data.integrations as Record<
@@ -36,6 +40,51 @@ export const Integrations: React.FC = () => {
       >;
     },
   });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get('connected');
+    const error = params.get('error');
+    const detail = params.get('detail');
+
+    if (connected) {
+      const connectedProviders = connected.split(',').filter(Boolean);
+      const providerName = connectedProviders.map((provider) => provider.replace('_', ' ')).join(' and ');
+      addNotification({
+        title: 'Integration connected',
+        message: `${providerName} is connected and ready to use.`,
+        type: 'success',
+      });
+
+      setLocalStatusOverrides((prev) => connectedProviders.reduce((next, provider) => ({
+        ...next,
+        [provider]: { connected: true, connected_at: new Date().toISOString() },
+      }), prev));
+
+      queryClient.setQueryData<Record<string, { connected: boolean; email?: string; connected_at?: string }>>(
+        ['integrations-status'],
+        (previous) => connectedProviders.reduce((next, provider) => ({
+          ...(next || {}),
+          [provider]: { ...(next?.[provider] || {}), connected: true, connected_at: new Date().toISOString() },
+        }), previous || {})
+      );
+
+      queryClient.invalidateQueries({ queryKey: ['integrations-status'] });
+      void refetch();
+      window.history.replaceState({}, '', '/integrations');
+    }
+
+    if (error) {
+      addNotification({
+        title: 'Connection failed',
+        message: detail || `Google authorization failed: ${error}`,
+        type: 'error',
+      });
+      queryClient.invalidateQueries({ queryKey: ['integrations-status'] });
+      void refetch();
+      window.history.replaceState({}, '', '/integrations');
+    }
+  }, [addNotification, queryClient, refetch]);
 
   // Connect mutation
   const connectMutation = useMutation({
@@ -96,7 +145,10 @@ export const Integrations: React.FC = () => {
     },
   ];
 
-  const currentStatus = statusMap || {};
+  const currentStatus = {
+    ...(statusMap || {}),
+    ...localStatusOverrides,
+  };
 
   return (
     <div className="space-y-6 pb-12">

@@ -58,28 +58,20 @@ export const Engagement: React.FC = () => {
   });
 
   const morning = morningBrief || {
-    greeting: 'Good morning, Bro!',
-    quote: 'Focus is a muscle. The more you protect your deep work windows, the bigger your wins.',
-    top_priorities: [
-      'Refactor Gemini API function calling schema',
-      'Review React Query mutation cache invalidations',
-      'Conduct 15-min EOD sync with team',
-    ],
-    peak_focus_window: '09:00 AM – 11:30 AM',
-    weather_focus_score: 95,
+    greeting: 'Your morning brief is being prepared',
+    quote: 'Connect Workspace services to generate a brief from your live email and calendar context.',
+    top_priorities: [],
+    peak_focus_window: 'Awaiting your schedule',
+    weather_focus_score: 0,
   };
 
   const evening = eveningWrap || {
-    headline: 'Great hustle today!',
-    tasks_completed: 8,
-    total_xp_gained: 450,
-    focus_hours: 6.5,
-    streak_days: 12,
-    highlights: [
-      'Completed high-priority task: "Gemini Service Setup"',
-      'Maintained uninterrupted focus for 2.5 consecutive hours',
-      'Leveled up Productivity Bar to Level 4',
-    ],
+    headline: 'Your evening wrap is being prepared',
+    tasks_completed: 0,
+    total_xp_gained: 0,
+    focus_hours: 0,
+    streak_days: 0,
+    highlights: ['Complete tasks or focus sessions to build your evening summary.'],
   };
 
   const handleSendNotification = (e: React.FormEvent) => {

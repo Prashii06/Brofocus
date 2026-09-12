@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Award,
@@ -25,6 +25,9 @@ const badges = [
 
 export const Profile: React.FC = () => {
   const user = useAppStore((state) => state.user);
+  const setUser = useAppStore((state) => state.setUser);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState(user?.avatar || '');
   const name = user?.name || 'BroFocus User';
   const level = user?.level || 4;
   const points = user?.productivity_points || 2450;
@@ -42,15 +45,27 @@ export const Profile: React.FC = () => {
           >
             <div className="group relative mb-6">
               <div className="flex h-36 w-36 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-primary via-primary-container to-sky-active text-5xl font-extrabold text-white shadow-2xl">
-                {name.charAt(0).toUpperCase()}
+                {preview ? <img src={preview} alt="Profile" className="h-full w-full rounded-full object-cover" /> : name.charAt(0).toUpperCase()}
               </div>
               <button
                 type="button"
                 aria-label="Edit profile photo"
+                onClick={() => fileInputRef.current?.click()}
                 className="absolute bottom-1 right-1 flex h-10 w-10 items-center justify-center rounded-full border-2 border-white bg-sky-active text-white shadow-lg transition hover:scale-110"
               >
                 <Pencil size={16} />
               </button>
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const avatar = String(reader.result || '');
+                  setPreview(avatar);
+                  if (user) setUser({ ...user, avatar });
+                };
+                reader.readAsDataURL(file);
+              }} />
             </div>
 
             <h1 className="text-2xl font-extrabold text-on-surface">{name}</h1>

@@ -28,21 +28,26 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ onCreden
       .then(() => {
         if (cancelled || !window.google || !buttonRef.current) return;
 
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: (response) => onCredential(response.credential),
-        });
+        try {
+          window.google.accounts.id.initialize({
+            client_id: clientId,
+            callback: (response) => onCredential(response.credential),
+          });
 
-        window.google.accounts.id.renderButton(buttonRef.current, {
-          type: 'standard',
-          theme: 'outline',
-          size: 'large',
-          shape: 'pill',
-          text: 'continue_with',
-          width: 280,
-        });
+          window.google.accounts.id.renderButton(buttonRef.current, {
+            type: 'standard',
+            theme: 'outline',
+            size: 'large',
+            shape: 'pill',
+            text: 'continue_with',
+            width: 280,
+          });
 
-        setLoading(false);
+          setLoading(false);
+        } catch (error) {
+          setLoading(false);
+          onError(error instanceof Error ? error.message : 'Google sign-in could not be initialized.');
+        }
       })
       .catch(() => {
         if (!cancelled) {

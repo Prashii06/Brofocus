@@ -35,7 +35,7 @@ const ToastOverlay: React.FC = () => {
   return (
     <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
       <AnimatePresence>
-        {notifications.map((n) => (
+        {notifications.slice(0, 3).map((n) => (
           <motion.div
             key={n.id}
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
@@ -86,7 +86,6 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           {children}
         </main>
       </div>
-      <FloatingChatbot />
       <ToastOverlay />
     </div>
   );
@@ -120,8 +119,10 @@ export const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <FloatingChatbot />
         <Routes>
           <Route path="/landing" element={<Landing />} />
+          <Route path="/login" element={<Navigate to="/landing" replace />} />
           <Route
             path="/"
             element={

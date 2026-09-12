@@ -71,6 +71,7 @@ export const analyticsApi = {
 
 // ─── Engagement ───────────────────────────────────────────────────────────────
 export const engagementApi = {
+  autoSync: () => api.post('/engagement/auto-sync').then((r) => r.data),
   getMorningKickoff: () => api.get('/engagement/morning-kickoff').then((r) => r.data),
   getEveningWrap: () => api.get('/engagement/evening-wrap').then((r) => r.data),
   sendNotification: (data: { type: string; title: string; message: string }) =>
@@ -94,6 +95,11 @@ export const assistantApi = {
 export const publicChatApi = {
   chat: (message: string, sessionId = 'landing') =>
     api.post('/public/chat', { message, session_id: sessionId }).then((r) => r.data),
+};
+
+export const contactApi = {
+  send: (data: { name: string; email: string; message: string }) =>
+    api.post('/contact', data).then((r) => r.data),
 };
 
 export const workspaceApi = {
@@ -125,7 +131,7 @@ export const multimodalApi = {
 
 // ─── Integrations ─────────────────────────────────────────────────────────────
 export const integrationsApi = {
-  getStatus: () => api.get('/integrations/status').then((r) => r.data),
+  getStatus: () => api.get('/integrations/status', { params: { _ts: Date.now() } }).then((r) => r.data),
   connect: (provider: string) => api.post(`/integrations/connect/${provider}`).then((r) => r.data),
   connectProvider: (provider: string) =>
     api.post(`/integrations/connect/${provider}`).then((r) => r.data),

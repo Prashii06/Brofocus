@@ -3,15 +3,15 @@ import { randomUUID } from 'crypto';
 import { authenticate } from '../middleware/auth';
 import { aiLimiter } from '../middleware/rateLimiter';
 import { processWorkspaceChat, ChatMessage, WorkspaceToolCall } from '../services/geminiService';
-import { createCalendarEvent, getCalendarEvents, searchGmail, WorkspaceAuthError } from '../services/googleWorkspaceService';
-import { store, TaskPriority } from '../store/inMemory';
+import { createCalendarEvent, createGmailDraft, getCalendarEvents, searchGmail, WorkspaceAuthError } from '../services/googleWorkspaceService';
+import { store, TaskPriority, TaskStatus, TimeBlockType } from '../store/inMemory';
 
 const router = Router();
 router.use(authenticate);
 
 interface PendingProposal {
   userId: string;
-  type: 'calendar_event' | 'task';
+  type: 'calendar_event' | 'task' | 'time_block';
   payload: Record<string, unknown>;
   expiresAt: number;
 }
@@ -36,6 +36,32 @@ async function runWorkspaceTool(userId: string, toolCall: WorkspaceToolCall): Pr
       type: 'calendar_results',
       events: await getCalendarEvents(userId, String(args.time_min), String(args.time_max), args.query ? String(args.query) : undefined),
     };
+  }
+  if (toolCall.name === 'create_gmail_draft') {
+    const to = String(args.to || '');
+    const subject = String(args.subject || '');
+    const body = String(args.body || '');
+    if (!to || !subject || !body) throw new Error('Email draft needs a recipient, subject, and body.');
+    return { type: 'gmail_draft', draft: await createGmailDraft(userId, { to, subject, body }) };
+  }
+  if (toolCall.name === 'update_task') {
+    const taskId = String(args.task_id || '');
+    const status = String(args.status || '');
+    const task = await store.getTask(taskId);
+    if (!task || task.user_id !== userId) throw new Error('Task was not found for this user.');
+    if (!['pending', 'in_progress', 'completed'].includes(status)) throw new Error('Task status is invalid.');
+    return { type: 'task_updated', task: await store.updateTask(taskId, { status: status as TaskStatus }) };
+  }
+  if (toolCall.name === 'create_time_block') {
+    const title = String(args.title || '');
+    const start = String(args.start || '');
+    const end = String(args.end || '');
+    const type = String(args.type || 'focus');
+    if (!title || !start || !end || !['task', 'meeting', 'focus', 'break'].includes(type)) throw new Error('A schedule slot needs a title, start, end, and valid type.');
+    const proposalId = randomUUID();
+    const payload = { title, start, end, type, color: args.color ? String(args.color) : undefined };
+    proposals.set(proposalId, { userId, type: 'time_block', payload, expiresAt: Date.now() + 10 * 60 * 1000 });
+    return { proposal_id: proposalId, type: 'time_block', payload, requires_confirmation: true };
   }
   if (toolCall.name === 'create_calendar_event') {
     const payload = {
@@ -97,6 +123,15 @@ router.post('/confirm', async (req: Request, res: Response) => {
   try {
     const result = proposal.type === 'calendar_event'
       ? await createCalendarEvent(userId, proposal.payload as any)
+      : proposal.type === 'time_block'
+      ? await store.createTimeBlock({
+        user_id: userId,
+        title: String(proposal.payload.title),
+        start: String(proposal.payload.start),
+        end: String(proposal.payload.end),
+        type: proposal.payload.type as TimeBlockType,
+        color: proposal.payload.color ? String(proposal.payload.color) : undefined,
+      })
       : await store.createTask({
         title: String(proposal.payload.title),
         description: proposal.payload.description ? String(proposal.payload.description) : undefined,

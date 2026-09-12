@@ -25,6 +25,7 @@ import { GoogleSignInButton } from '../components/auth/GoogleSignInButton';
 import { useAppStore } from '../store/useAppStore';
 import BrandLogo from '../components/ui/BrandLogo';
 import FloatingChatbot from '../components/ui/FloatingChatbot';
+import { contactApi } from '../api/client';
 
 
 export const Landing: React.FC = () => {
@@ -34,6 +35,9 @@ export const Landing: React.FC = () => {
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [showSignIn, setShowSignIn] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
+  const [contactForm, setContactForm] = useState({ name: '', email: '', message: '' });
+  const [contactState, setContactState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [contactError, setContactError] = useState('');
 
   const handleCredential = async (credential: string) => {
     setSignInError(null);
@@ -43,6 +47,21 @@ export const Landing: React.FC = () => {
       navigate('/');
     } else {
       setSignInError(result.error);
+    }
+  };
+
+  const handleContactSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setContactState('sending');
+    setContactError('');
+
+    try {
+      await contactApi.send(contactForm);
+      setContactForm({ name: '', email: '', message: '' });
+      setContactState('sent');
+    } catch (error: any) {
+      setContactState('error');
+      setContactError(error?.response?.data?.error || 'We could not send your message. Please try again.');
     }
   };
 
@@ -157,13 +176,13 @@ export const Landing: React.FC = () => {
                     className="absolute top-full left-0 w-60 bg-white rounded-2xl shadow-2xl border border-outline-variant p-3 z-50 space-y-1"
                   >
                     <div onClick={() => navigate('/analytics')} className="p-2.5 rounded-xl hover:bg-surface-container cursor-pointer text-xs font-semibold text-on-surface">
-                      Analytics Hub
+                      Kanban Board
                     </div>
                     <div onClick={() => navigate('/engagement')} className="p-2.5 rounded-xl hover:bg-surface-container cursor-pointer text-xs font-semibold text-on-surface">
                       Daily Kickoff Briefs
                     </div>
                     <div onClick={() => navigate('/integrations')} className="p-2.5 rounded-xl hover:bg-surface-container cursor-pointer text-xs font-semibold text-on-surface">
-                      Ecosystem Integrations
+                      Integrations
                     </div>
                   </motion.div>
                 )}
@@ -181,7 +200,7 @@ export const Landing: React.FC = () => {
             onClick={() => setShowSignIn(true)}
             className="bg-gradient-to-r from-sky-active to-primary text-white font-label-bold px-7 py-2.5 rounded-full shadow-[0_4px_15px_rgba(85,98,235,0.3)] hover:-translate-y-0.5 active:scale-95 transition-all text-sm"
           >
-            Launch App
+            Get Started
           </button>
         </div>
       </header>
@@ -198,7 +217,7 @@ export const Landing: React.FC = () => {
           <div className="container max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-12 lg:gap-16 z-10">
             <div className="flex-1 text-center lg:text-left">
               <span className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-extrabold uppercase tracking-wider mb-6 border border-primary/20">
-                ⚡ Powered by Gemini 1.5 Pro AI
+                ⚡ Powered by Gemini AI
               </span>
               <h1 className="font-display-lg text-4xl sm:text-5xl lg:text-[56px] leading-[1.1] mb-6 text-on-background">
                 Master Your Deep Work with <span className="text-primary">AI Focus Time</span>
@@ -218,7 +237,7 @@ export const Landing: React.FC = () => {
                   className="glass-card text-on-surface font-semibold text-base px-8 py-4 rounded-full hover:bg-white transition-all border border-white/50 flex items-center justify-center gap-2"
                 >
                   <PlayCircle size={20} className="text-primary" />
-                  Try AI Assistant
+                  Watch Demo
                 </button>
               </div>
             </div>
@@ -399,8 +418,45 @@ export const Landing: React.FC = () => {
         </section>
       </main>
 
+      {/* Contact */}
+      <section id="contact" className="bg-surface-container-low px-6 py-20 lg:px-8">
+        <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+          <div>
+            <p className="mb-3 text-xs font-extrabold uppercase tracking-[0.2em] text-primary">Contact BroFocus</p>
+            <h2 className="font-display-lg text-3xl font-extrabold text-on-background sm:text-4xl">Have a question or idea?</h2>
+            <p className="mt-4 max-w-md text-base leading-7 text-on-surface-variant">Send your question straight to the BroFocus team. We read every message and will reply to the email you provide.</p>
+          </div>
+
+          <form onSubmit={handleContactSubmit} className="rounded-3xl border border-white/70 bg-white p-6 shadow-xl sm:p-8">
+            <div className="grid gap-5 sm:grid-cols-2">
+              <label className="space-y-2 text-sm font-bold text-on-surface">
+                Name
+                <input required minLength={2} maxLength={100} value={contactForm.name} onChange={(event) => setContactForm((form) => ({ ...form, name: event.target.value }))} className="w-full rounded-xl border border-outline-variant bg-surface-container px-4 py-3 font-normal outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
+              </label>
+              <label className="space-y-2 text-sm font-bold text-on-surface">
+                Email
+                <input required type="email" value={contactForm.email} onChange={(event) => setContactForm((form) => ({ ...form, email: event.target.value }))} className="w-full rounded-xl border border-outline-variant bg-surface-container px-4 py-3 font-normal outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
+              </label>
+            </div>
+            <label className="mt-5 block space-y-2 text-sm font-bold text-on-surface">
+              Your question
+              <textarea required minLength={10} maxLength={5000} rows={5} value={contactForm.message} onChange={(event) => setContactForm((form) => ({ ...form, message: event.target.value }))} className="w-full resize-y rounded-xl border border-outline-variant bg-surface-container px-4 py-3 font-normal outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
+            </label>
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className={`text-sm ${contactState === 'error' ? 'text-rose-600' : 'text-emerald-600'}`} role="status">
+                {contactState === 'sent' ? 'Message sent. We will be in touch.' : contactState === 'error' ? contactError : ''}
+              </p>
+              <button type="submit" disabled={contactState === 'sending'} className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 font-bold text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
+                <Send size={16} />
+                {contactState === 'sending' ? 'Sending...' : 'Send message'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
       {/* Footer */}
-      <footer id="contact" className="bg-[#0b0e14] text-white pt-20 pb-12 px-6 lg:px-8">
+      <footer className="bg-[#0b0e14] text-white pt-20 pb-12 px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8 mb-16">
             <div className="col-span-2 space-y-4">

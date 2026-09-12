@@ -6,18 +6,27 @@ import { decrypt, encrypt } from '../lib/crypto';
 import { store, IntegrationProvider } from '../store/inMemory';
 
 const router = Router();
-router.use(authenticate);
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3001/api/v1/integrations/callback';
 
+const normalizeFrontendUrl = (value: string): string => value.replace(/\/+$/, '');
+const buildFrontendRedirect = (frontendUrl: string, params: Record<string, string>) => {
+  const safeBaseUrl = normalizeFrontendUrl(frontendUrl || 'http://localhost:5173');
+  const searchParams = new URLSearchParams(params);
+  return `${safeBaseUrl}/integrations?${searchParams.toString()}`;
+};
+
 const PROVIDER_SCOPES: Record<IntegrationProvider, string[]> = {
-  gmail: ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.send'],
+  gmail: ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.compose'],
   google_calendar: ['https://www.googleapis.com/auth/calendar.readonly', 'https://www.googleapis.com/auth/calendar.events'],
   google_drive: ['https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/drive.file'],
   google_meet: ['https://www.googleapis.com/auth/meetings.space.created'],
 };
+
+const GOOGLE_WORKSPACE_PROVIDERS: IntegrationProvider[] = ['gmail', 'google_calendar'];
+const GOOGLE_WORKSPACE_SCOPES = [...new Set(GOOGLE_WORKSPACE_PROVIDERS.flatMap((provider) => PROVIDER_SCOPES[provider]))];
 
 const VALID_PROVIDERS = Object.keys(PROVIDER_SCOPES) as IntegrationProvider[];
 
@@ -26,9 +35,12 @@ function isValidProvider(value: string): value is IntegrationProvider {
 }
 
 // GET /api/v1/integrations/status
-router.get('/status', async (req: Request, res: Response) => {
+router.get('/status', authenticate, async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const integrations = await store.getIntegrations(userId);
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
 
   const statusMap = integrations.reduce((acc, integration) => {
     acc[integration.provider] = {
@@ -55,7 +67,7 @@ router.get('/status', async (req: Request, res: Response) => {
 
 // POST /api/v1/integrations/connect/:provider
 // Initialize OAuth authorization redirect
-router.post('/connect/:provider', async (req: Request, res: Response) => {
+router.post('/connect/:provider', authenticate, async (req: Request, res: Response) => {
   const { provider } = req.params;
 
   if (!isValidProvider(provider)) {
@@ -70,7 +82,7 @@ router.post('/connect/:provider', async (req: Request, res: Response) => {
     });
   }
 
-  const scopes = PROVIDER_SCOPES[provider];
+  const scopes = GOOGLE_WORKSPACE_PROVIDERS.includes(provider) ? GOOGLE_WORKSPACE_SCOPES : PROVIDER_SCOPES[provider];
   const state = Buffer.from(JSON.stringify({ provider, userId: req.user!.userId })).toString('base64');
 
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
@@ -95,19 +107,26 @@ router.post('/connect/:provider', async (req: Request, res: Response) => {
 // stores the encrypted refresh token instead of marking the connection as
 // connected without a real credential.
 router.get('/callback', async (req: Request, res: Response) => {
-  const { code, state, error } = req.query;
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const { code, state, error, error_description } = req.query;
+  const frontendUrl = normalizeFrontendUrl(process.env.FRONTEND_URL || 'http://localhost:5173');
 
   if (error) {
-    return res.redirect(`${frontendUrl}/integrations?error=${encodeURIComponent(String(error))}`);
+    return res.redirect(buildFrontendRedirect(frontendUrl, {
+      error: String(error),
+      ...(error_description ? { detail: String(error_description) } : {}),
+    }));
   }
 
   if (!code || !state) {
-    return res.status(400).json({ error: 'Missing OAuth callback parameters' });
+    return res.redirect(buildFrontendRedirect(frontendUrl, {
+      error: 'missing_oauth_params',
+    }));
   }
 
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    return res.status(500).json({ error: 'Google OAuth is not configured on the server.' });
+    return res.redirect(buildFrontendRedirect(frontendUrl, {
+      error: 'google_oauth_not_configured',
+    }));
   }
 
   try {
@@ -115,7 +134,9 @@ router.get('/callback', async (req: Request, res: Response) => {
     const { provider, userId } = stateData as { provider: string; userId: string };
 
     if (!isValidProvider(provider)) {
-      return res.status(400).json({ error: 'Invalid provider in OAuth state' });
+      return res.redirect(buildFrontendRedirect(frontendUrl, {
+        error: 'invalid_provider',
+      }));
     }
 
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
@@ -140,10 +161,10 @@ router.get('/callback', async (req: Request, res: Response) => {
     };
 
     if (!tokenResponse.ok || tokenData.error) {
-      return res.status(400).json({
-        error: 'Google OAuth token exchange failed',
-        details: tokenData.error_description || tokenData.error || 'Unknown OAuth error',
-      });
+      return res.redirect(buildFrontendRedirect(frontendUrl, {
+        error: tokenData.error || 'google_oauth_token_exchange_failed',
+        detail: tokenData.error_description || 'Unknown OAuth error',
+      }));
     }
 
     const existingIntegration = await store.getIntegration(userId, provider);
@@ -160,31 +181,43 @@ router.get('/callback', async (req: Request, res: Response) => {
 
     const refreshToken = tokenData.refresh_token || previousToken.refresh_token;
     if (!refreshToken && !tokenData.access_token) {
-      return res.status(400).json({ error: 'Google OAuth response did not include any token to persist.' });
+      return res.redirect(buildFrontendRedirect(frontendUrl, {
+        error: 'missing_oauth_token',
+      }));
     }
 
     const decodedIdToken = tokenData.id_token ? (jwt.decode(tokenData.id_token) as { email?: string } | null) : null;
 
-    await store.updateIntegration(userId, provider, {
+    const encryptedToken = encrypt(JSON.stringify({
+      refresh_token: refreshToken,
+      access_token: tokenData.access_token,
+      expires_at: tokenData.expires_in ? Date.now() + Number(tokenData.expires_in) * 1000 : undefined,
+    }));
+    const connectedAt = new Date();
+    const targetProviders = GOOGLE_WORKSPACE_PROVIDERS.includes(provider)
+      ? GOOGLE_WORKSPACE_PROVIDERS
+      : [provider];
+
+    await Promise.all(targetProviders.map((targetProvider) => store.updateIntegration(userId, targetProvider, {
       connected: true,
       email: decodedIdToken?.email ?? null,
-      connected_at: new Date(),
-      encrypted_token: encrypt(JSON.stringify({
-        refresh_token: refreshToken,
-        access_token: tokenData.access_token,
-        expires_at: tokenData.expires_in ? Date.now() + Number(tokenData.expires_in) * 1000 : undefined,
-      })),
-    });
+      connected_at: connectedAt,
+      encrypted_token: encryptedToken,
+    })));
 
-    return res.redirect(`${frontendUrl}/integrations?connected=${provider}`);
+    return res.redirect(buildFrontendRedirect(frontendUrl, {
+      connected: targetProviders.join(','),
+    }));
   } catch (error) {
     console.error('[integrations/callback] OAuth callback failure:', error);
-    return res.status(400).json({ error: 'Invalid OAuth state or callback payload' });
+    return res.redirect(buildFrontendRedirect(frontendUrl, {
+      error: 'invalid_oauth_state',
+    }));
   }
 });
 
 // DELETE /api/v1/integrations/disconnect/:provider
-router.delete('/disconnect/:provider', async (req: Request, res: Response) => {
+router.delete('/disconnect/:provider', authenticate, async (req: Request, res: Response) => {
   const { provider } = req.params;
   const userId = req.user!.userId;
 

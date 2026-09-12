@@ -17,6 +17,7 @@ import multimodalRoutes from './routes/multimodal';
 import integrationsRoutes from './routes/integrations';
 import publicRoutes from './routes/public';
 import workspaceRoutes from './routes/workspace';
+import contactRoutes from './routes/contact';
 
 // Middleware
 import { apiLimiter } from './middleware/rateLimiter';
@@ -60,6 +61,7 @@ app.use('/api/v1/multimodal', multimodalRoutes);
 app.use('/api/v1/integrations', integrationsRoutes);
 app.use('/api/v1/public', publicRoutes);
 app.use('/api/v1/workspace', workspaceRoutes);
+app.use('/api/v1/contact', contactRoutes);
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 

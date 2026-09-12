@@ -1,6 +1,9 @@
-import React, { FormEvent, useRef, useState } from 'react';
-import { Bot, Loader2, Mic, Send, X } from 'lucide-react';
+import React, { FormEvent, useRef, useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Bot, Loader2, Mic, Send, X, Maximize2, Minimize2, LogOut, PanelLeft, User, Search, Sparkles } from 'lucide-react';
 import { publicChatApi, workspaceApi } from '../../api/client';
+import { signOutCurrentUser } from '../../utils/auth';
+import { useAppStore } from '../../store/useAppStore';
 
 interface ChatMessage {
   role: 'user' | 'model';
@@ -43,13 +46,64 @@ const starterMessage: ChatMessage = {
 };
 
 export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = false }) => {
+  const { user, logout } = useAppStore();
+  const isPublicAssistant = publicMode;
   const [open, setOpen] = useState(false);
+  const [maximized, setMaximized] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([starterMessage]);
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [proposal, setProposal] = useState<{ proposal_id: string; type: string; payload: Record<string, unknown> } | null>(null);
+  const [position, setPosition] = useState({ x: window.innerWidth - 420, y: window.innerHeight - 520 });
+  const [dragging, setDragging] = useState(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+
+  useEffect(() => {
+    if (!open || maximized) return;
+
+    const handleMove = (event: MouseEvent) => {
+      if (!dragging) return;
+      const maxX = window.innerWidth - 360;
+      const maxY = window.innerHeight - 420;
+      setPosition({
+        x: Math.min(Math.max(event.clientX - dragOffset.current.x, 12), maxX),
+        y: Math.min(Math.max(event.clientY - dragOffset.current.y, 12), maxY),
+      });
+    };
+
+    const handleUp = () => setDragging(false);
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, [dragging, open, maximized]);
+
+  const startDrag = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (maximized || !open) return;
+    dragOffset.current = {
+      x: event.clientX - position.x,
+      y: event.clientY - position.y,
+    };
+    setDragging(true);
+  };
+
+  useEffect(() => {
+    if (isPublicAssistant) {
+      setMaximized(false);
+    }
+  }, [isPublicAssistant]);
+
+  const handleSignOut = async () => {
+    await signOutCurrentUser();
+    logout();
+    window.location.href = '/landing';
+  };
 
   const streamResponse = (response: string) => {
     const messageIndex = messages.length + 1;
@@ -120,69 +174,207 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = f
   };
 
   return (
-    <div className="fixed bottom-8 right-6 z-[60] sm:right-8">
-      {open && (
-        <div className="mb-4 flex h-[500px] w-[min(400px,calc(100vw-3rem))] flex-col overflow-hidden rounded-3xl border border-outline-variant bg-surface-container-lowest shadow-2xl">
-          <div className="flex items-center justify-between bg-primary p-5 text-on-primary">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20"><Bot size={22} /></div>
-              <div>
-                <h2 className="text-sm font-bold">BroBot</h2>
-                <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider opacity-80">
-                  <span className="h-2 w-2 rounded-full bg-success-green" /> Gemini AI online
+    <div className="fixed bottom-8 right-6 z-[70] sm:right-8">
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 20 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className={maximized && !isPublicAssistant ? 'fixed inset-4 z-[80] flex min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/30 bg-slate-100 shadow-[0_20px_60px_rgba(15,23,42,0.35)]' : 'fixed flex min-h-0 flex-col overflow-hidden rounded-[30px] border border-white/30 bg-slate-100 shadow-[0_20px_60px_rgba(15,23,42,0.35)]'}
+            style={maximized && !isPublicAssistant ? undefined : { width: 'min(420px, calc(100vw - 2rem))', height: 'min(560px, calc(100vh - 3rem))', left: position.x, top: position.y }}
+          >
+            <div
+              className="flex cursor-grab items-center justify-between bg-gradient-to-r from-blue-700 to-indigo-700 px-4 py-3 text-white active:cursor-grabbing"
+              onMouseDown={startDrag}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/20">
+                  <Bot size={18} />
                 </div>
+                <div>
+                  <div className="text-sm font-bold">BroBot</div>
+                  <div className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-blue-100">
+                    <span className="h-2 w-2 rounded-full bg-emerald-400" /> Gemini AI online
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {!isPublicAssistant && (
+                  <button type="button" onClick={() => setMaximized((value) => !value)} className="rounded-full p-1.5 transition hover:bg-white/10" aria-label={maximized ? 'Minimize chatbot' : 'Maximize chatbot'}>
+                    {maximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                  </button>
+                )}
+                <button type="button" onClick={() => setOpen(false)} className="rounded-full p-1.5 transition hover:bg-white/10" aria-label="Close chatbot">
+                  <X size={16} />
+                </button>
               </div>
             </div>
-            <button type="button" onClick={() => setOpen(false)} className="rounded-full p-2 transition hover:bg-white/10" aria-label="Close chatbot">
-              <X size={18} />
-            </button>
-          </div>
 
-          <div className="flex-1 space-y-4 overflow-y-auto bg-surface-container-low p-4">
-            {messages.map((message, index) => (
-              <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'items-start gap-2'}`}>
-                {message.role === 'model' && <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-outline-variant bg-surface-container-high text-primary"><Bot size={16} /></div>}
-                <div className={`max-w-[82%] whitespace-pre-wrap rounded-2xl p-3 text-sm leading-6 shadow-sm ${message.role === 'user' ? 'rounded-tr-none bg-primary text-on-primary' : 'rounded-tl-none border border-outline-variant bg-white text-on-surface'}`}>
-                  {message.content}
+            {maximized && !isPublicAssistant ? (
+              <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)] bg-slate-100 text-slate-800">
+                <aside className="flex flex-col border-r border-slate-200 bg-slate-50/80">
+                  <div className="border-b border-slate-200 p-3">
+                    <div className="flex items-center justify-between rounded-xl bg-white px-3 py-2 shadow-sm ring-1 ring-slate-200">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <Search size={14} className="text-slate-500" />
+                        Threads
+                      </div>
+                      <button type="button" onClick={() => setMaximized(false)} className="rounded-md p-1 text-slate-500 hover:bg-slate-100">
+                        <PanelLeft size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 space-y-2 overflow-y-auto p-3">
+                    <div className="rounded-2xl bg-indigo-50 p-3 shadow-sm ring-1 ring-indigo-200">
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-indigo-600">Active chat</div>
+                      <div className="mt-2 text-sm font-semibold text-slate-800">Workspace triage</div>
+                    </div>
+                    <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Yesterday</div>
+                      <div className="mt-2 text-sm font-medium text-slate-700">Gmail follow-ups</div>
+                    </div>
+                    <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Saved</div>
+                      <div className="mt-2 text-sm font-medium text-slate-700">Agenda recap</div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-200 p-3">
+                    <div className="flex items-center gap-3 rounded-2xl bg-white p-2.5 shadow-sm ring-1 ring-slate-200">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-sky-500 text-sm font-bold text-white">
+                        {user?.name?.[0]?.toUpperCase() || 'B'}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-semibold text-slate-800">{user?.name || 'BroFocus User'}</div>
+                        <div className="truncate text-[11px] text-slate-500">{user?.email || 'bro@brofocus.ai'}</div>
+                      </div>
+                      <button type="button" onClick={handleSignOut} className="rounded-lg p-2 text-rose-600 transition hover:bg-rose-50" aria-label="Sign out">
+                        <LogOut size={15} />
+                      </button>
+                    </div>
+                  </div>
+                </aside>
+
+                <div className="flex min-h-0 min-w-0 flex-col bg-slate-100">
+                  <div className="flex items-center justify-between border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur-sm">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                      <Sparkles className="h-4 w-4 text-indigo-600" />
+                      Workspace assistant
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] font-medium text-slate-500">
+                      <User className="h-3.5 w-3.5" />
+                      {user?.name || 'You'}
+                    </div>
+                  </div>
+
+                  <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-100 p-4">
+                    {messages.map((message, index) => (
+                      <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'items-start gap-2'}`}>
+                        {message.role === 'model' && (
+                          <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-indigo-700 ring-1 ring-slate-200">
+                            <Bot size={15} />
+                          </div>
+                        )}
+                        <div className={`max-w-[85%] whitespace-pre-wrap rounded-2xl p-3 text-sm leading-6 shadow-sm ${message.role === 'user' ? 'rounded-tr-none bg-indigo-600 text-white' : 'rounded-tl-none border border-slate-200 bg-white text-slate-700'}`}>
+                          {message.content}
+                        </div>
+                      </div>
+                    ))}
+                    {isSending && <div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><Loader2 className="animate-spin" size={14} /> BroBot is thinking...</div>}
+                    {proposal && !isPublicAssistant && (
+                      <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs shadow-sm">
+                        <p className="font-bold text-indigo-700">Confirm this {proposal.type === 'calendar_event' ? 'calendar event' : 'task'}?</p>
+                        <p className="mt-1 text-slate-600">{String(proposal.payload.summary || proposal.payload.title)}</p>
+                        <div className="mt-3 flex gap-2">
+                          <button type="button" onClick={() => confirmProposal(true)} className="rounded-full bg-indigo-600 px-3 py-1.5 font-bold text-white">Confirm</button>
+                          <button type="button" onClick={() => confirmProposal(false)} className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-bold text-slate-600">Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-t border-slate-200 bg-white p-3">
+                    <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <button type="button" onClick={toggleVoiceInput} className={`rounded-full p-2 transition ${isListening ? 'bg-rose-100 text-rose-600' : 'bg-white text-indigo-600 hover:bg-indigo-50'}`} aria-label={isListening ? 'Stop voice input' : 'Start voice input'}>
+                        <Mic size={16} />
+                      </button>
+                      <input
+                        value={input}
+                        onChange={(event) => setInput(event.target.value)}
+                        placeholder="Ask BroBot..."
+                        className="min-w-0 flex-1 border-0 bg-transparent py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:ring-0"
+                      />
+                      <button type="submit" onClick={(event) => void sendMessage(event as unknown as FormEvent)} disabled={isSending || !input.trim()} className="rounded-full bg-indigo-600 p-2 text-white transition hover:bg-indigo-700 disabled:opacity-40" aria-label="Send message">
+                        <Send size={16} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            ))}
-            {isSending && <div className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant"><Loader2 className="animate-spin" size={14} /> BroBot is thinking...</div>}
-            {proposal && !publicMode && (
-              <div className="rounded-2xl border border-primary/20 bg-primary/5 p-3 text-xs text-on-surface">
-                <p className="font-bold text-primary">Confirm this {proposal.type === 'calendar_event' ? 'calendar event' : 'task'}?</p>
-                <p className="mt-1 text-on-surface-variant">{String(proposal.payload.summary || proposal.payload.title)}</p>
-                <div className="mt-3 flex gap-2">
-                  <button type="button" onClick={() => confirmProposal(true)} className="rounded-full bg-primary px-3 py-1.5 font-bold text-white">Confirm</button>
-                  <button type="button" onClick={() => confirmProposal(false)} className="rounded-full border border-outline-variant bg-white px-3 py-1.5 font-bold text-on-surface-variant">Cancel</button>
+            ) : (
+              <>
+                <div className="flex min-h-0 flex-1 flex-col bg-slate-100">
+                  <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-100 p-4">
+                    {messages.map((message, index) => (
+                      <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'items-start gap-2'}`}>
+                        {message.role === 'model' && <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-indigo-700"><Bot size={16} /></div>}
+                        <div className={`max-w-[82%] whitespace-pre-wrap rounded-2xl p-3 text-sm leading-6 shadow-sm ${message.role === 'user' ? 'rounded-tr-none bg-indigo-600 text-white' : 'rounded-tl-none border border-slate-200 bg-white text-slate-700'}`}>
+                          {message.content}
+                        </div>
+                      </div>
+                    ))}
+                    {isSending && <div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><Loader2 className="animate-spin" size={14} /> BroBot is thinking...</div>}
+                    {proposal && !isPublicAssistant && (
+                      <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs shadow-sm">
+                        <p className="font-bold text-indigo-700">Confirm this {proposal.type === 'calendar_event' ? 'calendar event' : 'task'}?</p>
+                        <p className="mt-1 text-slate-600">{String(proposal.payload.summary || proposal.payload.title)}</p>
+                        <div className="mt-3 flex gap-2">
+                          <button type="button" onClick={() => confirmProposal(true)} className="rounded-full bg-indigo-600 px-3 py-1.5 font-bold text-white">Confirm</button>
+                          <button type="button" onClick={() => confirmProposal(false)} className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-bold text-slate-600">Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-t border-slate-200 bg-white p-3">
+                    <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
+                      <input
+                        value={input}
+                        onChange={(event) => setInput(event.target.value)}
+                        placeholder="Ask BroBot..."
+                        className="min-w-0 flex-1 border-0 bg-transparent py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:ring-0"
+                      />
+                      <button type="button" onClick={toggleVoiceInput} className={`rounded-full p-2 transition ${isListening ? 'bg-rose-100 text-rose-600' : 'bg-white text-indigo-600 hover:bg-indigo-50'}`} aria-label={isListening ? 'Stop voice input' : 'Start voice input'}>
+                        <Mic size={16} />
+                      </button>
+                      <button type="submit" onClick={(event) => void sendMessage(event as unknown as FormEvent)} disabled={isSending || !input.trim()} className="rounded-full bg-indigo-600 p-2 text-white transition hover:bg-indigo-700 disabled:opacity-40" aria-label="Send message">
+                        <Send size={16} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
-          </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          <form onSubmit={sendMessage} className="border-t border-outline-variant bg-white p-3">
-            <div className="flex items-center gap-2 rounded-full bg-surface-container px-3 py-1">
-              <input
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder="Ask BroBot..."
-                className="min-w-0 flex-1 border-0 bg-transparent py-2 text-sm text-on-surface outline-none placeholder:text-on-surface-variant focus:ring-0"
-              />
-              <button type="button" onClick={toggleVoiceInput} className={`rounded-full p-2 transition hover:bg-white ${isListening ? 'text-error' : 'text-primary'}`} aria-label={isListening ? 'Stop voice input' : 'Start voice input'}>
-                <Mic size={18} />
-              </button>
-              <button type="submit" disabled={isSending || !input.trim()} className="rounded-full p-2 text-primary transition hover:bg-white disabled:opacity-40" aria-label="Send message">
-                <Send size={18} />
-              </button>
-            </div>
-          </form>
-        </div>
+      {!open && (
+        <motion.button
+          whileHover={{ scale: 1.06 }}
+          whileTap={{ scale: 0.95 }}
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          className="group flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-indigo-600 to-blue-600 text-white shadow-[0_12px_35px_rgba(37,99,235,0.45)] transition"
+          aria-label={open ? 'Close BroBot' : 'Open BroBot'}
+        >
+          <Bot size={28} />
+        </motion.button>
       )}
-
-      {!open && <div className="pointer-events-none absolute bottom-full right-0 mb-4 whitespace-nowrap rounded-xl bg-on-surface px-4 py-2 text-xs font-bold text-surface opacity-0 shadow-xl transition group-hover:opacity-100">Need help, bro?</div>}
-      <button type="button" onClick={() => setOpen((current) => !current)} className="group flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-primary text-on-primary shadow-[0_8px_32px_rgba(58,71,209,0.4)] transition hover:scale-110 active:scale-95" aria-label={open ? 'Close BroBot' : 'Open BroBot'}>
-        {open ? <X size={28} /> : <Bot size={30} />}
-      </button>
     </div>
   );
 };

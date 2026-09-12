@@ -6,7 +6,6 @@ import { encrypt } from '../lib/crypto';
 import { store, IntegrationProvider } from '../store/inMemory';
 
 const router = Router();
-router.use(authenticate);
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
@@ -26,7 +25,7 @@ function isValidProvider(value: string): value is IntegrationProvider {
 }
 
 // GET /api/v1/integrations/status
-router.get('/status', async (req: Request, res: Response) => {
+router.get('/status', authenticate, async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const integrations = await store.getIntegrations(userId);
 
@@ -55,7 +54,7 @@ router.get('/status', async (req: Request, res: Response) => {
 
 // POST /api/v1/integrations/connect/:provider
 // Initialize OAuth authorization redirect
-router.post('/connect/:provider', async (req: Request, res: Response) => {
+router.post('/connect/:provider', authenticate, async (req: Request, res: Response) => {
   const { provider } = req.params;
 
   if (!isValidProvider(provider)) {
@@ -167,7 +166,7 @@ router.get('/callback', async (req: Request, res: Response) => {
 });
 
 // DELETE /api/v1/integrations/disconnect/:provider
-router.delete('/disconnect/:provider', async (req: Request, res: Response) => {
+router.delete('/disconnect/:provider', authenticate, async (req: Request, res: Response) => {
   const { provider } = req.params;
   const userId = req.user!.userId;
 
