@@ -133,6 +133,7 @@ router.get('/callback', async (req: Request, res: Response) => {
     const tokenData = await tokenResponse.json() as {
       refresh_token?: string;
       access_token?: string;
+      expires_in?: number;
       id_token?: string;
       error?: string;
       error_description?: string;
