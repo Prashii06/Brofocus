@@ -15,6 +15,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import { userApi } from '../api/client';
 
 const weeklyHours = [40, 64, 84, 55, 95, 70, 100];
 const badges = [
@@ -27,11 +28,11 @@ export const Profile: React.FC = () => {
   const user = useAppStore((state) => state.user);
   const setUser = useAppStore((state) => state.setUser);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [preview, setPreview] = useState(user?.avatar || '');
+  const [preview, setPreview] = useState(user?.avatarUrl || user?.avatar || '');
   const name = user?.name || 'BroFocus User';
-  const level = user?.level || 4;
-  const points = user?.productivity_points || 2450;
-  const nextLevelPoints = 3000;
+  const level = user?.level ?? 0;
+  const points = user?.productivity_points ?? 0;
+  const nextLevelPoints = (level + 1) * 500;
   const progress = Math.min(100, Math.round((points / nextLevelPoints) * 100));
 
   return (
@@ -59,10 +60,16 @@ export const Profile: React.FC = () => {
                 const file = event.target.files?.[0];
                 if (!file) return;
                 const reader = new FileReader();
-                reader.onload = () => {
+                reader.onload = async () => {
                   const avatar = String(reader.result || '');
-                  setPreview(avatar);
-                  if (user) setUser({ ...user, avatar });
+                  if (!user || !avatar) return;
+                  try {
+                    await userApi.updateProfile({ avatarUrl: avatar });
+                    setPreview(avatar);
+                    setUser({ ...user, avatar, avatarUrl: avatar });
+                  } catch (error) {
+                    console.error('Failed to update profile avatar:', error);
+                  }
                 };
                 reader.readAsDataURL(file);
               }} />

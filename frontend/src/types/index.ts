@@ -25,6 +25,7 @@ export interface User {
   email: string;
   name: string;
   avatar?: string;
+  avatarUrl?: string;
   productivity_points: number;
   level: number;
   created_at: string;
@@ -131,6 +132,7 @@ export interface MorningKickoff {
   top_priorities?: string[];
   in_progress?: Partial<Task>[];
   meetings?: { title: string; start: string; end: string }[];
+  focus_hours?: number;
   peak_focus_window?: string;
   weather_focus_score?: number;
   productivity_score?: number;

@@ -44,6 +44,10 @@ export const authApi = {
   logout: () => api.post('/auth/logout').then((r) => r.data),
 };
 
+export const userApi = {
+  updateProfile: (data: { avatarUrl: string }) => api.patch('/user/profile', data).then((r) => r.data),
+};
+
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 export const tasksApi = {
   getAll: () => api.get('/tasks').then((r) => r.data),
@@ -61,6 +65,8 @@ export const scheduleApi = {
   smartPlan: () => api.post('/schedule/smart-plan').then((r) => r.data),
   getTimeline: (view: 'day' | 'week' = 'day', date?: string) =>
     api.get('/schedule/timeline', { params: { view, date } }).then((r) => r.data),
+  createBlock: (data: { title: string; start: string; end: string; type: 'focus' | 'meeting' | 'task' | 'break' }) =>
+    api.post('/schedule/blocks', data).then((r) => r.data),
 };
 
 // ─── Analytics ────────────────────────────────────────────────────────────────

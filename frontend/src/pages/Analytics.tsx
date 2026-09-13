@@ -12,9 +12,9 @@ import {
   Sparkles,
   Calendar,
   Flame,
-  ArrowUpRight,
   CheckCircle2,
   Cpu,
+  Loader2,
 } from 'lucide-react';
 import { analyticsApi, tasksApi } from '../api/client';
 import { FocusChart } from '../components/charts/FocusChart';
@@ -43,21 +43,17 @@ export const Analytics: React.FC = () => {
 
   const tasks = tasksData || [];
   const taskCounts = {
-    pending: tasks.filter((t: any) => t.status === 'pending').length || 4,
-    in_progress: tasks.filter((t: any) => t.status === 'in_progress').length || 3,
-    completed: tasks.filter((t: any) => t.status === 'completed').length || 8,
+    pending: tasks.filter((t: any) => t.status === 'pending').length,
+    in_progress: tasks.filter((t: any) => t.status === 'in_progress').length,
+    completed: tasks.filter((t: any) => t.status === 'completed').length,
   };
 
-
-  const focusData = trendsData?.trend || [
-    { date: 'Mon', focus_hours: 5.5, tasks_completed: 6 },
-    { date: 'Tue', focus_hours: 7.2, tasks_completed: 9 },
-    { date: 'Wed', focus_hours: 6.8, tasks_completed: 7 },
-    { date: 'Thu', focus_hours: 8.4, tasks_completed: 11 },
-    { date: 'Fri', focus_hours: 6.1, tasks_completed: 8 },
-    { date: 'Sat', focus_hours: 3.5, tasks_completed: 4 },
-    { date: 'Sun', focus_hours: 4.0, tasks_completed: 5 },
-  ];
+  const trends = trendsData?.trends;
+  const focusData = trends?.focus_trend || [];
+  const weeklySummary = trends?.weekly_summary;
+  const totalFocusHours = focusData.reduce((total: number, day: any) => total + day.focus_hours, 0);
+  const metric = (value: string | number, suffix = '') =>
+    isTrendsLoading ? <Loader2 size={20} className="animate-spin text-cyan-400" /> : `${value}${suffix}`;
 
   return (
     <div className="space-y-6 pb-12">
@@ -109,13 +105,9 @@ export const Analytics: React.FC = () => {
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-100">41.4 hrs</span>
-            <span className="text-xs font-semibold text-emerald-400 flex items-center gap-0.5">
-              <ArrowUpRight size={14} />
-              +14%
-            </span>
+            <span className="text-2xl font-bold text-slate-100">{metric(totalFocusHours, ' hrs')}</span>
           </div>
-          <p className="text-xs text-slate-500 mt-1">Avg 6.9 hrs / workday</p>
+          <p className="text-xs text-slate-500 mt-1">Average {metric(weeklySummary?.avg_focus_hours || 0, ' hrs')} per tracked day</p>
         </motion.div>
 
         <motion.div
@@ -129,13 +121,9 @@ export const Analytics: React.FC = () => {
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-100">92.4%</span>
-            <span className="text-xs font-semibold text-emerald-400 flex items-center gap-0.5">
-              <ArrowUpRight size={14} />
-              +3.2%
-            </span>
+            <span className="text-2xl font-bold text-slate-100">{metric(weeklySummary?.avg_productivity_score || 0, '%')}</span>
           </div>
-          <p className="text-xs text-slate-500 mt-1">Based on uninterrupted work blocks</p>
+          <p className="text-xs text-slate-500 mt-1">Average productivity score</p>
         </motion.div>
 
         <motion.div
@@ -149,10 +137,9 @@ export const Analytics: React.FC = () => {
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-100">12 Days</span>
-            <span className="text-xs font-semibold text-amber-400 font-mono">⚡ Hot</span>
+            <span className="text-2xl font-bold text-slate-100">{metric(0, ' Days')}</span>
           </div>
-          <p className="text-xs text-slate-500 mt-1">Best record: 18 days</p>
+          <p className="text-xs text-slate-500 mt-1">Streak tracking is not available yet</p>
         </motion.div>
 
         <motion.div
@@ -166,10 +153,9 @@ export const Analytics: React.FC = () => {
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-100">6.5 hrs</span>
-            <span className="text-xs font-semibold text-cyan-400">Gemini</span>
+            <span className="text-2xl font-bold text-slate-100">{metric(0, ' hrs')}</span>
           </div>
-          <p className="text-xs text-slate-500 mt-1">Via automated scheduling & briefings</p>
+          <p className="text-xs text-slate-500 mt-1">AI time savings are not available yet</p>
         </motion.div>
       </div>
 
@@ -197,14 +183,20 @@ export const Analytics: React.FC = () => {
               Gemini AI Productivity Recommendation
             </h3>
             <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-              You execute deep work 28% faster between 09:00 AM and 11:30 AM. Consider scheduling high-priority coding and architecture tasks during this window to boost your daily XP gain by ~250 pts.
+              {isTrendsLoading
+                ? 'Loading your productivity insights...'
+                : focusData.length > 0
+                  ? 'Your focus history is ready for review. Use the trend chart to identify your strongest work patterns.'
+                  : 'Complete focus sessions to unlock personalized productivity recommendations.'}
             </p>
           </div>
         </div>
 
-        <button className="whitespace-nowrap px-4 py-2.5 rounded-xl text-xs font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/30 transition-all shadow-md">
-          Apply Recommendation
-        </button>
+        {focusData.length > 0 && (
+          <button className="whitespace-nowrap px-4 py-2.5 rounded-xl text-xs font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/30 transition-all shadow-md">
+            Review Trends
+          </button>
+        )}
       </div>
     </div>
   );

@@ -38,7 +38,7 @@ export const SchedulePlanner: React.FC = () => {
     queryKey: ['schedule-timeline'],
     queryFn: async () => {
       const res = await scheduleApi.getTimeline();
-      return res.data.slots as ScheduleSlot[];
+      return res.data.time_blocks as ScheduleSlot[];
     },
   });
 
@@ -69,6 +69,25 @@ export const SchedulePlanner: React.FC = () => {
     },
   });
 
+  const createBlockMutation = useMutation({
+    mutationFn: () => scheduleApi.createBlock({
+      title: newTitle.trim(),
+      start: newStartTime,
+      end: newEndTime,
+      type: newCategory,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['schedule-timeline'] });
+      addNotification({
+        title: 'Time Block Created',
+        message: `Added "${newTitle}" to your schedule for ${newStartTime}`,
+        type: 'info',
+      });
+      setNewTitle('');
+      setIsAddModalOpen(false);
+    },
+  });
+
   const slots = timelineData || [];
 
   const filteredSlots = slots.filter((slot) => {
@@ -79,31 +98,7 @@ export const SchedulePlanner: React.FC = () => {
   const handleAddSlot = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
-
-    // Simulate adding slot
-    const mockSlot: ScheduleSlot = {
-      id: 'slot-' + Date.now(),
-      title: newTitle,
-      category: newCategory,
-      start_time: newStartTime,
-      end_time: newEndTime,
-      duration_minutes: 60,
-      completed: false,
-    };
-
-    queryClient.setQueryData(['schedule-timeline'], (old: ScheduleSlot[] | undefined) => [
-      ...(old || []),
-      mockSlot,
-    ]);
-
-    addNotification({
-      title: 'Time Block Created',
-      message: `Added "${newTitle}" to your schedule for ${newStartTime}`,
-      type: 'info',
-    });
-
-    setNewTitle('');
-    setIsAddModalOpen(false);
+    createBlockMutation.mutate();
   };
 
   const hoursList = [
@@ -386,9 +381,10 @@ export const SchedulePlanner: React.FC = () => {
                   </button>
                   <button
                     type="submit"
+                    disabled={createBlockMutation.isPending}
                     className="px-4 py-2 text-xs font-semibold rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 text-white hover:brightness-110 shadow-lg shadow-cyan-500/20"
                   >
-                    Create Block
+                    {createBlockMutation.isPending ? 'Creating...' : 'Create Block'}
                   </button>
                 </div>
               </form>
