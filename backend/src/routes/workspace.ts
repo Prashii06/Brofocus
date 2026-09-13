@@ -45,12 +45,22 @@ async function runWorkspaceTool(userId: string, toolCall: WorkspaceToolCall): Pr
     return { type: 'gmail_draft', draft: await createGmailDraft(userId, { to, subject, body }) };
   }
   if (toolCall.name === 'update_task') {
-    const taskId = String(args.task_id || '');
+    const requestedTaskId = typeof args.task_id === 'string' ? args.task_id.trim() : '';
+    const requestedTitle = typeof args.title === 'string' ? args.title.trim().toLowerCase() : '';
     const status = String(args.status || '');
-    const task = await store.getTask(taskId);
+    let task = requestedTaskId ? await store.getTask(requestedTaskId) : null;
+
+    if (!task && requestedTitle) {
+      const tasks = await store.getTasks(userId);
+      task = tasks.find((candidate) => candidate.title.toLowerCase() === requestedTitle)
+        || tasks.find((candidate) => candidate.title.toLowerCase().includes(requestedTitle) || requestedTitle.includes(candidate.title.toLowerCase()))
+        || null;
+    }
+
+    if (!task && !requestedTaskId && !requestedTitle) throw new Error('A task ID or title is required.');
     if (!task || task.user_id !== userId) throw new Error('Task was not found for this user.');
     if (!['pending', 'in_progress', 'completed'].includes(status)) throw new Error('Task status is invalid.');
-    return { type: 'task_updated', task: await store.updateTask(taskId, { status: status as TaskStatus }) };
+    return { type: 'task_updated', task: await store.updateTask(task.id, { status: status as TaskStatus }) };
   }
   if (toolCall.name === 'create_time_block') {
     const title = String(args.title || '');

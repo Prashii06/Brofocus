@@ -2,11 +2,40 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
 import { aiLimiter } from '../middleware/rateLimiter';
-import { store } from '../store/inMemory';
+import { store, TimeBlockType } from '../store/inMemory';
 import { scanEmailContext, smartPlanSchedule } from '../services/geminiService';
 
 const router = Router();
 router.use(authenticate);
+
+router.post('/blocks', async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const { title, start, end, type } = req.body as {
+    title?: string;
+    start?: string;
+    end?: string;
+    type?: TimeBlockType;
+  };
+
+  if (!title?.trim() || !start || !end || !type || !['task', 'meeting', 'focus', 'break'].includes(type)) {
+    return res.status(400).json({ error: 'Title, start, end, and a valid block type are required.' });
+  }
+
+  try {
+    const timeBlock = await store.createTimeBlock({
+      user_id: userId,
+      title: title.trim(),
+      start,
+      end,
+      type,
+    });
+
+    return res.status(201).json({ status: 'success', time_block: timeBlock });
+  } catch (error) {
+    console.error('[Schedule] create block error:', error);
+    return res.status(500).json({ error: 'Failed to create schedule block' });
+  }
+});
 
 // POST /api/v1/schedule/scan-context
 // Gemini AI scans Gmail + Calendar for tasks and commitments

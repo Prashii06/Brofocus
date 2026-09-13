@@ -64,6 +64,7 @@ model User {
   email               String   @unique
   name                String
   avatar              String?
+  avatarUrl            String?
   productivity_points Int      @default(0)
   level               Int      @default(1)
   whitelisted         Boolean  @default(false)

@@ -18,6 +18,7 @@ import integrationsRoutes from './routes/integrations';
 import publicRoutes from './routes/public';
 import workspaceRoutes from './routes/workspace';
 import contactRoutes from './routes/contact';
+import userRoutes from './routes/user';
 
 // Middleware
 import { apiLimiter } from './middleware/rateLimiter';
@@ -62,6 +63,7 @@ app.use('/api/v1/integrations', integrationsRoutes);
 app.use('/api/v1/public', publicRoutes);
 app.use('/api/v1/workspace', workspaceRoutes);
 app.use('/api/v1/contact', contactRoutes);
+app.use('/api/v1/user', userRoutes);
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 

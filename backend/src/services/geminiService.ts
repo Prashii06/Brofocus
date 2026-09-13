@@ -111,7 +111,7 @@ Do not mention sign-in, login, sign up, or user accounts unless the user explici
       {
         name: 'update_task',
         description: 'Move an existing BroFocus task between pending, in_progress, and completed when the user explicitly asks.',
-        parameters: { type: 'OBJECT', properties: { task_id: { type: 'STRING' }, status: { type: 'STRING', enum: ['pending', 'in_progress', 'completed'] } }, required: ['task_id', 'status'] },
+        parameters: { type: 'OBJECT', properties: { task_id: { type: 'STRING', description: 'The task ID, when available' }, title: { type: 'STRING', description: 'The task title, used when the task ID is unavailable' }, status: { type: 'STRING', enum: ['pending', 'in_progress', 'completed'] } }, required: ['status'] },
       },
       {
         name: 'create_time_block',
