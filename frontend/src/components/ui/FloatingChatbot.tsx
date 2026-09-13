@@ -1,4 +1,4 @@
-import React, { FormEvent, useRef, useState, useEffect } from 'react';
+import React, { FormEvent, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Loader2, Mic, Send, X, Maximize2, Minimize2, LogOut, PanelLeft, User, Search, Sparkles } from 'lucide-react';
 import { publicChatApi, workspaceApi } from '../../api/client';
@@ -8,6 +8,13 @@ import { useAppStore } from '../../store/useAppStore';
 interface ChatMessage {
   role: 'user' | 'model';
   content: string;
+}
+
+interface ChatThread {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  updatedAt: number;
 }
 
 interface FloatingChatbotProps {
@@ -45,6 +52,9 @@ const starterMessage: ChatMessage = {
   content: 'Hey bro, I am BroBot. Ask me how BroFocus can help you plan, focus, and level up your workday.',
 };
 
+const getThreadStorageKey = (publicMode: boolean, userId?: string) =>
+  `brofocus-chat-threads-${publicMode ? 'public' : userId || 'workspace'}`;
+
 export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = false }) => {
   const { user, logout } = useAppStore();
   const isPublicAssistant = publicMode;
@@ -55,43 +65,37 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = f
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [proposal, setProposal] = useState<{ proposal_id: string; type: string; payload: Record<string, unknown> } | null>(null);
-  const [position, setPosition] = useState({ x: window.innerWidth - 420, y: window.innerHeight - 520 });
-  const [dragging, setDragging] = useState(false);
-  const dragOffset = useRef({ x: 0, y: 0 });
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const [threads, setThreads] = useState<ChatThread[]>([]);
+  const recognitionRef = React.useRef<SpeechRecognitionLike | null>(null);
 
   useEffect(() => {
-    if (!open || maximized) return;
+    try {
+      const storedThreads = window.localStorage.getItem(getThreadStorageKey(isPublicAssistant, user?.id));
+      if (storedThreads) {
+        const parsedThreads = JSON.parse(storedThreads) as ChatThread[];
+        setThreads(parsedThreads);
+        const latestThread = parsedThreads[0];
+        if (latestThread?.messages?.length) setMessages(latestThread.messages);
+      }
+    } catch {
+      setThreads([]);
+    }
+  }, [isPublicAssistant, user?.id]);
 
-    const handleMove = (event: MouseEvent) => {
-      if (!dragging) return;
-      const maxX = window.innerWidth - 360;
-      const maxY = window.innerHeight - 420;
-      setPosition({
-        x: Math.min(Math.max(event.clientX - dragOffset.current.x, 12), maxX),
-        y: Math.min(Math.max(event.clientY - dragOffset.current.y, 12), maxY),
-      });
+  useEffect(() => {
+    if (!messages.length) return;
+    const firstUserMessage = messages.find((message) => message.role === 'user');
+    const thread: ChatThread = {
+      id: 'current',
+      title: firstUserMessage?.content.slice(0, 30) || 'New conversation',
+      messages,
+      updatedAt: Date.now(),
     };
-
-    const handleUp = () => setDragging(false);
-
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleUp);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleUp);
-    };
-  }, [dragging, open, maximized]);
-
-  const startDrag = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (maximized || !open) return;
-    dragOffset.current = {
-      x: event.clientX - position.x,
-      y: event.clientY - position.y,
-    };
-    setDragging(true);
-  };
+    const remainingThreads = threads.filter((item) => item.id !== 'current');
+    const nextThreads = [thread, ...remainingThreads].slice(0, 8);
+    setThreads((current) => current.length === nextThreads.length && current[0]?.messages === messages ? current : nextThreads);
+    window.localStorage.setItem(getThreadStorageKey(isPublicAssistant, user?.id), JSON.stringify(nextThreads));
+  }, [messages, isPublicAssistant, user?.id]);
 
   useEffect(() => {
     if (isPublicAssistant) {
@@ -116,7 +120,7 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = f
     }, 18);
   };
 
-  const sendMessage = async (event: FormEvent) => {
+  const sendMessage = async (event: FormEvent | React.KeyboardEvent<HTMLInputElement>) => {
     event.preventDefault();
     const message = input.trim();
     if (!message || isSending) return;
@@ -136,6 +140,13 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = f
       setMessages((current) => [...current, { role: 'model', content: detail }]);
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void sendMessage(event);
     }
   };
 
@@ -164,7 +175,10 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = f
   const confirmProposal = async (confirmed: boolean) => {
     if (!proposal) return;
     try {
-      if (confirmed) await workspaceApi.confirm(proposal.proposal_id, true);
+      if (confirmed) {
+        await workspaceApi.confirm(proposal.proposal_id, true);
+        window.dispatchEvent(new Event('brofocus-data-changed'));
+      }
       setMessages((current) => [...current, { role: 'model', content: confirmed ? 'Done. I applied the confirmed change.' : 'No changes made. I discarded that proposal.' }]);
     } catch (error: any) {
       setMessages((current) => [...current, { role: 'model', content: error?.response?.data?.error || 'The confirmed action could not be completed.' }]);
@@ -174,7 +188,7 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = f
   };
 
   return (
-    <div className="fixed bottom-8 right-6 z-[70] sm:right-8">
+    <div className="fixed bottom-6 right-6 z-[70] sm:bottom-8 sm:right-8">
       <AnimatePresence>
         {open && (
           <motion.div
@@ -182,12 +196,11 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = f
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 20 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className={maximized && !isPublicAssistant ? 'fixed inset-4 z-[80] flex min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/30 bg-slate-100 shadow-[0_20px_60px_rgba(15,23,42,0.35)]' : 'fixed flex min-h-0 flex-col overflow-hidden rounded-[30px] border border-white/30 bg-slate-100 shadow-[0_20px_60px_rgba(15,23,42,0.35)]'}
-            style={maximized && !isPublicAssistant ? undefined : { width: 'min(420px, calc(100vw - 2rem))', height: 'min(560px, calc(100vh - 3rem))', left: position.x, top: position.y }}
+            className={maximized && !isPublicAssistant ? 'fixed inset-4 z-[80] flex min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/30 bg-slate-100 shadow-[0_20px_60px_rgba(15,23,42,0.35)]' : 'fixed bottom-6 right-6 flex min-h-0 flex-col overflow-hidden rounded-[30px] border border-white/30 bg-slate-100 shadow-[0_20px_60px_rgba(15,23,42,0.35)] sm:bottom-8 sm:right-8'}
+            style={maximized && !isPublicAssistant ? undefined : { width: 'min(420px, calc(100vw - 2rem))', height: 'min(560px, calc(100vh - 3rem))' }}
           >
             <div
               className="flex cursor-grab items-center justify-between bg-gradient-to-r from-blue-700 to-indigo-700 px-4 py-3 text-white active:cursor-grabbing"
-              onMouseDown={startDrag}
             >
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/20">
@@ -196,7 +209,7 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = f
                 <div>
                   <div className="text-sm font-bold">BroBot</div>
                   <div className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-blue-100">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400" /> Gemini AI online
+                    <span className="h-2 w-2 rounded-full bg-emerald-400" /> Clear plans. Focused days.
                   </div>
                 </div>
               </div>
@@ -229,18 +242,20 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = f
                   </div>
 
                   <div className="flex-1 space-y-2 overflow-y-auto p-3">
-                    <div className="rounded-2xl bg-indigo-50 p-3 shadow-sm ring-1 ring-indigo-200">
-                      <div className="text-[10px] font-bold uppercase tracking-wide text-indigo-600">Active chat</div>
-                      <div className="mt-2 text-sm font-semibold text-slate-800">Workspace triage</div>
-                    </div>
-                    <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
-                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Yesterday</div>
-                      <div className="mt-2 text-sm font-medium text-slate-700">Gmail follow-ups</div>
-                    </div>
-                    <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
-                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Saved</div>
-                      <div className="mt-2 text-sm font-medium text-slate-700">Agenda recap</div>
-                    </div>
+                    {threads.map((thread, index) => (
+                      <button
+                        key={thread.id}
+                        type="button"
+                        onClick={() => setMessages(thread.messages)}
+                        className={`w-full rounded-2xl p-3 text-left shadow-sm ring-1 transition ${index === 0 ? 'bg-indigo-50 ring-indigo-200' : 'bg-white ring-slate-200 hover:bg-slate-50'}`}
+                      >
+                        <div className={`text-[10px] font-bold uppercase tracking-wide ${index === 0 ? 'text-indigo-600' : 'text-slate-500'}`}>
+                          {index === 0 ? 'Active chat' : 'Conversation'}
+                        </div>
+                        <div className="mt-2 truncate text-sm font-semibold text-slate-800">{thread.title}</div>
+                      </button>
+                    ))}
+                    {!threads.length && <p className="px-2 py-4 text-xs leading-5 text-slate-500">Your conversations will appear here as you use BroBot.</p>}
                   </div>
 
                   <div className="border-t border-slate-200 p-3">
@@ -305,6 +320,7 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = f
                       <input
                         value={input}
                         onChange={(event) => setInput(event.target.value)}
+                        onKeyDown={handleInputKeyDown}
                         placeholder="Ask BroBot..."
                         className="min-w-0 flex-1 border-0 bg-transparent py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:ring-0"
                       />
@@ -345,6 +361,7 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = f
                       <input
                         value={input}
                         onChange={(event) => setInput(event.target.value)}
+                        onKeyDown={handleInputKeyDown}
                         placeholder="Ask BroBot..."
                         className="min-w-0 flex-1 border-0 bg-transparent py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:ring-0"
                       />
@@ -368,7 +385,7 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = f
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.95 }}
           type="button"
-          onClick={() => setOpen((current) => !current)}
+          onClick={() => setOpen(true)}
           className="group flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-indigo-600 to-blue-600 text-white shadow-[0_12px_35px_rgba(37,99,235,0.45)] transition"
           aria-label={open ? 'Close BroBot' : 'Open BroBot'}
         >

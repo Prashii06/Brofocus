@@ -13,7 +13,6 @@ router.use(authenticate);
 router.post('/scan-context', aiLimiter, async (req: Request, res: Response) => {
   const userId = req.user!.userId;
 
-  // Respond immediately; scan continues in the background.
   res.json({
     status: 'processing',
     message: 'Contextual scan initiated for emails and calendar events.',
@@ -21,16 +20,14 @@ router.post('/scan-context', aiLimiter, async (req: Request, res: Response) => {
   });
 
   try {
-    // Background processing (would use a job queue in production)
-    const result = await scanEmailContext();
-    const notification = await store.createNotification({
+    const result = await scanEmailContext(userId);
+    await store.createNotification({
       user_id: userId,
       type: 'ai',
       title: '📧 Gmail Context Scan Complete',
       message: result.summary,
     });
-
-    console.log(`[Schedule] Context scan complete. Tasks found: ${result.tasks_found}. Notification: ${notification.id}`);
+    console.log(`[Schedule] Context scan complete. Tasks found: ${result.tasks_found}`);
   } catch (error) {
     console.error('[Schedule] scan-context error:', error);
   }
@@ -40,7 +37,8 @@ router.post('/scan-context', aiLimiter, async (req: Request, res: Response) => {
 // AI rebalances tasks, resolves overlaps
 router.post('/smart-plan', aiLimiter, async (req: Request, res: Response) => {
   try {
-    const result = await smartPlanSchedule();
+    const userId = req.user!.userId;
+    const result = await smartPlanSchedule(userId);
 
     res.json({
       status: 'success',
@@ -84,6 +82,39 @@ router.get('/timeline', async (req: Request, res: Response) => {
     date: targetDate,
     time_blocks: timeBlocks,
     total: timeBlocks.length,
+  });
+});
+
+router.post('/time-blocks', async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const { title, start, end, type = 'focus', color, description } = req.body ?? {};
+
+  if (!title || typeof title !== 'string' || !title.trim()) {
+    return res.status(400).json({ error: 'A slot title is required.' });
+  }
+
+  if (!start || !end) {
+    return res.status(400).json({ error: 'Slot start and end times are required.' });
+  }
+
+  const validTypes = ['task', 'meeting', 'focus', 'break'] as const;
+  const normalizedType = validTypes.includes(type) ? type : 'focus';
+
+  const created = await store.createTimeBlock({
+    user_id: userId,
+    title: title.trim(),
+    start: String(start),
+    end: String(end),
+    type: normalizedType,
+    color: color ? String(color) : undefined,
+    task_id: undefined,
+  });
+
+  res.status(201).json({
+    status: 'success',
+    time_block: created,
+    message: `Added "${created.title}" to your schedule.`,
+    description: description ? String(description) : undefined,
   });
 });
 

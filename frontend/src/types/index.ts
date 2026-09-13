@@ -135,6 +135,7 @@ export interface MorningKickoff {
   weather_focus_score?: number;
   productivity_score?: number;
   level?: number;
+  streak_days?: number;
   motivational_message?: string;
 }
 

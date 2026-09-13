@@ -1,5 +1,6 @@
 // BroFocus - Integrations Routes (/api/v1/integrations)
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { authenticate } from '../middleware/auth';
 import { decrypt, encrypt } from '../lib/crypto';
@@ -25,13 +26,36 @@ const PROVIDER_SCOPES: Record<IntegrationProvider, string[]> = {
   google_meet: ['https://www.googleapis.com/auth/meetings.space.created'],
 };
 
-const GOOGLE_WORKSPACE_PROVIDERS: IntegrationProvider[] = ['gmail', 'google_calendar'];
-const GOOGLE_WORKSPACE_SCOPES = [...new Set(GOOGLE_WORKSPACE_PROVIDERS.flatMap((provider) => PROVIDER_SCOPES[provider]))];
-
 const VALID_PROVIDERS = Object.keys(PROVIDER_SCOPES) as IntegrationProvider[];
+const OAUTH_STATE_SECRET = process.env.JWT_ACCESS_SECRET || 'brofocus-oauth-state-secret';
 
 function isValidProvider(value: string): value is IntegrationProvider {
   return (VALID_PROVIDERS as string[]).includes(value);
+}
+
+function createSignedState(payload: { provider: string; userId: string; exp: number }) {
+  const serialized = JSON.stringify(payload);
+  const signature = crypto.createHmac('sha256', OAUTH_STATE_SECRET).update(serialized).digest('hex');
+  return Buffer.from(`${serialized}.${signature}`).toString('base64url');
+}
+
+function verifySignedState(rawState: string): { provider: string; userId: string } | null {
+  try {
+    const decoded = Buffer.from(rawState, 'base64url').toString('utf8');
+    const lastDot = decoded.lastIndexOf('.');
+    if (lastDot <= 0) return null;
+
+    const payloadString = decoded.slice(0, lastDot);
+    const signature = decoded.slice(lastDot + 1);
+    const expectedSignature = crypto.createHmac('sha256', OAUTH_STATE_SECRET).update(payloadString).digest('hex');
+    if (signature !== expectedSignature) return null;
+
+    const payload = JSON.parse(payloadString) as { provider?: string; userId?: string; exp?: number };
+    if (!payload.provider || !payload.userId || !payload.exp || payload.exp < Date.now()) return null;
+    return { provider: payload.provider, userId: payload.userId };
+  } catch {
+    return null;
+  }
 }
 
 // GET /api/v1/integrations/status
@@ -82,8 +106,8 @@ router.post('/connect/:provider', authenticate, async (req: Request, res: Respon
     });
   }
 
-  const scopes = GOOGLE_WORKSPACE_PROVIDERS.includes(provider) ? GOOGLE_WORKSPACE_SCOPES : PROVIDER_SCOPES[provider];
-  const state = Buffer.from(JSON.stringify({ provider, userId: req.user!.userId })).toString('base64');
+  const scopes = PROVIDER_SCOPES[provider];
+  const state = createSignedState({ provider, userId: req.user!.userId, exp: Date.now() + 10 * 60 * 1000 });
 
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID);
@@ -130,9 +154,14 @@ router.get('/callback', async (req: Request, res: Response) => {
   }
 
   try {
-    const stateData = JSON.parse(Buffer.from(state as string, 'base64').toString());
-    const { provider, userId } = stateData as { provider: string; userId: string };
+    const verifiedState = verifySignedState(String(state));
+    if (!verifiedState) {
+      return res.redirect(buildFrontendRedirect(frontendUrl, {
+        error: 'invalid_oauth_state',
+      }));
+    }
 
+    const { provider, userId } = verifiedState;
     if (!isValidProvider(provider)) {
       return res.redirect(buildFrontendRedirect(frontendUrl, {
         error: 'invalid_provider',
@@ -194,19 +223,16 @@ router.get('/callback', async (req: Request, res: Response) => {
       expires_at: tokenData.expires_in ? Date.now() + Number(tokenData.expires_in) * 1000 : undefined,
     }));
     const connectedAt = new Date();
-    const targetProviders = GOOGLE_WORKSPACE_PROVIDERS.includes(provider)
-      ? GOOGLE_WORKSPACE_PROVIDERS
-      : [provider];
 
-    await Promise.all(targetProviders.map((targetProvider) => store.updateIntegration(userId, targetProvider, {
+    await store.updateIntegration(userId, provider, {
       connected: true,
       email: decodedIdToken?.email ?? null,
       connected_at: connectedAt,
       encrypted_token: encryptedToken,
-    })));
+    });
 
     return res.redirect(buildFrontendRedirect(frontendUrl, {
-      connected: targetProviders.join(','),
+      connected: provider,
     }));
   } catch (error) {
     console.error('[integrations/callback] OAuth callback failure:', error);

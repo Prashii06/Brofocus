@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Award,
@@ -26,8 +26,14 @@ const badges = [
 export const Profile: React.FC = () => {
   const user = useAppStore((state) => state.user);
   const setUser = useAppStore((state) => state.setUser);
+  const updateUserAvatar = useAppStore((state) => state.updateUserAvatar);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState(user?.avatar || '');
+
+  useEffect(() => {
+    setPreview(user?.avatar || '');
+  }, [user?.avatar]);
+
   const name = user?.name || 'BroFocus User';
   const level = user?.level || 4;
   const points = user?.productivity_points || 2450;
@@ -63,6 +69,7 @@ export const Profile: React.FC = () => {
                   const avatar = String(reader.result || '');
                   setPreview(avatar);
                   if (user) setUser({ ...user, avatar });
+                  void updateUserAvatar(avatar);
                 };
                 reader.readAsDataURL(file);
               }} />

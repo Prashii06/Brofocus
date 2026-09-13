@@ -25,25 +25,25 @@ const PROVIDER_METADATA: Record<
     name: 'Gmail AI Sync',
     description: 'Scan emails for task commitments, context, and follow-ups.',
     icon: <Mail className="w-5 h-5 text-rose-400" />,
-    color: 'border-rose-500/30 bg-rose-950/20',
+    color: 'border-rose-200 bg-rose-50',
   },
   google_calendar: {
     name: 'Google Calendar',
     description: 'Auto-sync time blocks and align focus windows with events.',
     icon: <Calendar className="w-5 h-5 text-cyan-400" />,
-    color: 'border-cyan-500/30 bg-cyan-950/20',
+    color: 'border-cyan-200 bg-cyan-50',
   },
   google_drive: {
     name: 'Google Drive Intelligence',
     description: 'Scan project documentation and spec sheets for context.',
     icon: <HardDrive className="w-5 h-5 text-amber-400" />,
-    color: 'border-amber-500/30 bg-amber-950/20',
+    color: 'border-amber-200 bg-amber-50',
   },
   google_meet: {
     name: 'Google Meet Summaries',
     description: 'Auto-schedule meeting prep and post-call action items.',
     icon: <Video className="w-5 h-5 text-emerald-400" />,
-    color: 'border-emerald-500/30 bg-emerald-950/20',
+    color: 'border-emerald-200 bg-emerald-50',
   },
 };
 
@@ -67,7 +67,7 @@ export const IntegrationCard: React.FC<IntegrationCardProps> = ({
   return (
     <motion.div
       whileHover={{ y: -2 }}
-      className={`p-5 rounded-2xl border ${meta.color} backdrop-blur-md shadow-xl flex flex-col justify-between space-y-4`}
+      className={`p-5 rounded-2xl border ${meta.color} backdrop-blur-md shadow-xl flex flex-col justify-between space-y-4 text-slate-900`}
     >
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -76,8 +76,8 @@ export const IntegrationCard: React.FC<IntegrationCardProps> = ({
               {meta.icon}
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-100">{name || meta.name}</h3>
-              <span className="text-[10px] text-slate-400 font-medium capitalize">
+              <h3 className="text-sm font-bold text-slate-900">{name || meta.name}</h3>
+              <span className="text-[10px] text-slate-600 font-medium capitalize">
                 {provider.replace('_', ' ')}
               </span>
             </div>
@@ -95,23 +95,23 @@ export const IntegrationCard: React.FC<IntegrationCardProps> = ({
           </span>
         </div>
 
-        <p className="text-xs text-slate-400 leading-relaxed">{description || meta.description}</p>
+        <p className="text-xs text-slate-700 leading-relaxed">{description || meta.description}</p>
 
         {isConnected && (
-          <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800 text-xs text-slate-300 flex items-center gap-2">
+          <div className="p-2 rounded-xl bg-white/80 border border-slate-200 text-xs text-slate-700 flex items-center gap-2">
             <Mail size={12} className="text-slate-500" />
             <span className="truncate">{userEmail}</span>
           </div>
         )}
       </div>
 
-      <div className="pt-2 border-t border-slate-800/60">
+      <div className="pt-2 border-t border-slate-300/70">
         <button
           onClick={() => (isConnected ? onDisconnect(provider) : onConnect(provider))}
           disabled={isBusy}
           className={`w-full flex items-center justify-center gap-2 py-2 text-xs font-semibold rounded-xl border transition-all ${
             isConnected
-              ? 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-rose-950/40 hover:border-rose-500/40 hover:text-rose-300'
+              ? 'bg-white/80 border-slate-300 text-slate-700 hover:bg-rose-50 hover:border-rose-400 hover:text-rose-700'
               : 'bg-gradient-to-r from-violet-600 to-cyan-600 border-transparent text-white hover:brightness-110 shadow-lg shadow-cyan-500/20'
           }`}
         >

@@ -163,8 +163,8 @@ export async function createGmailDraft(userId: string, input: GmailDraftInput): 
   return { id: response.id, message_id: response.message?.id };
 }
 
-export async function getCalendarEvents(userId: string, timeMin: string, timeMax: string, query?: string): Promise<CalendarEventSummary[]> {
-  const params = new URLSearchParams({ timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '50' });
+export async function getCalendarEvents(userId: string, timeMin: string, timeMax: string, query?: string, maxResults = 50): Promise<CalendarEventSummary[]> {
+  const params = new URLSearchParams({ timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: String(Math.min(Math.max(maxResults, 1), 50)) });
   if (query) params.set('q', query);
   const data = await googleRequest<{ items?: any[] }>(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`,

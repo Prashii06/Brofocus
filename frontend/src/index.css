@@ -47,12 +47,22 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; background: var(--bg-primary); }
+html {
+  scroll-behavior: smooth;
+  background: var(--bg-primary);
+  overflow-x: hidden;
+}
 body {
   margin: 0;
   font-family: 'Plus Jakarta Sans', sans-serif;
   background: linear-gradient(180deg, #f9f9ff 0%, #eef3ff 100%);
   color: var(--text-primary);
+  overflow-x: hidden;
+}
+
+#root {
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 h1, h2, h3, h4, h5, h6 {

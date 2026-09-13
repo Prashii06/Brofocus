@@ -1,6 +1,6 @@
 // BroFocus - Zustand Global Store
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { Task, User, Notification, ChatMessage, KanbanData } from '../types';
 import { authApi, engagementApi } from '../api/client';
 
@@ -27,6 +27,7 @@ interface AppState {
   // UI State
   sidebarOpen: boolean;
   activePage: string;
+  streakCount: number;
 
   // XP Animation
   xpAnimation: { show: boolean; points: number } | null;
@@ -50,9 +51,11 @@ interface AppState {
   clearChatHistory: () => void;
   setSidebarOpen: (open: boolean) => void;
   setActivePage: (page: string) => void;
+  setStreakCount: (count: number) => void;
   triggerXPAnimation: (points: number) => void;
   clearXPAnimation: () => void;
   updateUserPoints: (points: number) => void;
+  updateUserAvatar: (avatar: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -75,6 +78,7 @@ export const useAppStore = create<AppState>()(
       chatSessionId: `session-${Date.now()}`,
       sidebarOpen: true,
       activePage: 'dashboard',
+      streakCount: 0,
       xpAnimation: null,
 
       // Auth
@@ -214,6 +218,7 @@ export const useAppStore = create<AppState>()(
       // UI
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       setActivePage: (page) => set({ activePage: page }),
+      setStreakCount: (count) => set({ streakCount: count }),
 
       // XP Animation
       triggerXPAnimation: (points) => {
@@ -225,6 +230,12 @@ export const useAppStore = create<AppState>()(
         const { user } = get();
         if (user) {
           set({ user: { ...user, productivity_points: points } });
+        }
+      },
+      updateUserAvatar: async (avatar) => {
+        const res = await authApi.updateAvatar(avatar);
+        if (res?.user) {
+          set({ user: res.user });
         }
       },
 
@@ -248,11 +259,14 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'brofocus-store',
+      storage: createJSONStorage(() => sessionStorage),
       partialize: (state) => ({
+        user: state.user,
         token: state.token,
         sidebarOpen: state.sidebarOpen,
         chatMessages: state.chatMessages.slice(-50),
         chatSessionId: state.chatSessionId,
+        streakCount: state.streakCount,
       }),
     }
   )

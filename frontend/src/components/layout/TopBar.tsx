@@ -1,7 +1,7 @@
 // BroFocus - Top Bar Component
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, Search, X, Check, Menu, LogOut, ChevronDown, User, Settings } from 'lucide-react';
+import { Bell, X, Check, Menu, LogOut, ChevronDown, User, Settings } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { format } from 'date-fns';
 import BrandLogo from '../ui/BrandLogo';
@@ -14,10 +14,18 @@ interface TopBarProps {
 
 export const TopBar: React.FC<TopBarProps> = ({ title = 'BroFocus', subtitle }) => {
 
-  const { notifications, unreadCount, markNotificationRead, user, logout } = useAppStore();
+  const { notifications, unreadCount, markNotificationRead, user, logout, streakCount } = useAppStore();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [searchValue, setSearchValue] = useState('');
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) setShowProfileMenu(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+  }, []);
 
   const handleSignOut = async () => {
     setShowProfileMenu(false);
@@ -27,11 +35,11 @@ export const TopBar: React.FC<TopBarProps> = ({ title = 'BroFocus', subtitle }) 
   };
 
   const notifTypeColors: Record<string, string> = {
-    info: 'text-cyan-400',
-    success: 'text-emerald-400',
-    warning: 'text-amber-400',
-    error: 'text-rose-400',
-    ai: 'text-violet-400',
+    info: 'text-cyan-700',
+    success: 'text-emerald-700',
+    warning: 'text-amber-700',
+    error: 'text-rose-700',
+    ai: 'text-violet-700',
   };
 
   return (
@@ -51,34 +59,19 @@ export const TopBar: React.FC<TopBarProps> = ({ title = 'BroFocus', subtitle }) 
           <Menu size={22} />
         </button>
         <div className="flex items-center gap-3">
-          <BrandLogo compact />
-          <div>
-            <h2 className="text-lg font-extrabold tracking-tight text-primary leading-tight">BroFocus</h2>
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-active">{subtitle || title}</p>
-          </div>
+          <BrandLogo />
+          {subtitle && <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-active">{subtitle}</span>}
         </div>
       </div>
 
       {/* Right Actions */}
       <div className="flex items-center gap-3">
-        {/* Search */}
-        <div className="relative hidden lg:block">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
-          <input
-            type="text"
-            placeholder="Quick search..."
-            value={searchValue}
-            onChange={(e) => setSearchValue(e.target.value)}
-            className="pl-9 pr-4 py-2 w-48 text-sm h-9 rounded-full border border-[#dfe6ff] bg-white/60 text-on-surface placeholder:text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
-
         <div className="hidden items-center gap-2 rounded-full border border-motivation-orange/20 bg-motivation-orange/10 px-3 py-1.5 text-sm font-bold text-motivation-orange sm:flex">
-          <span className="text-base">12</span>
+          <span className="text-base">{streakCount}</span>
           <span className="hidden xl:inline text-[11px] uppercase tracking-wider">day streak</span>
         </div>
 
-        <div className="relative">
+        <div className="relative" ref={profileMenuRef}>
           <motion.button
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.98 }}
@@ -104,25 +97,25 @@ export const TopBar: React.FC<TopBarProps> = ({ title = 'BroFocus', subtitle }) 
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -10, scale: 0.95 }}
                 transition={{ duration: 0.2 }}
-                className="absolute right-0 top-12 w-80 rounded-2xl border border-[#dfe6ff] bg-white/90 shadow-2xl backdrop-blur-xl z-50 overflow-hidden"
+                className="absolute right-0 top-12 w-80 rounded-2xl border border-slate-200 bg-white shadow-2xl z-50 overflow-hidden"
               >
-                <div className="flex items-center justify-between px-4 py-3 border-b border-[#dfe6ff]">
-                  <span className="text-sm font-semibold text-on-surface">Notifications</span>
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50">
+                  <span className="text-sm font-semibold text-slate-800">Notifications</span>
                   <div className="flex items-center gap-2">
                     {unreadCount > 0 && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700 font-medium">
                         {unreadCount} new
                       </span>
                     )}
-                    <button onClick={() => setShowNotifications(false)} className="text-on-surface-variant hover:text-on-surface">
+                    <button onClick={() => setShowNotifications(false)} className="text-slate-500 hover:text-slate-700">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
 
-                <div className="max-h-80 overflow-y-auto">
+                <div className="max-h-80 overflow-y-auto bg-white">
                   {notifications.length === 0 ? (
-                    <div className="px-4 py-8 text-center text-on-surface-variant">
+                    <div className="px-4 py-8 text-center text-slate-500">
                       <Bell className="w-8 h-8 mx-auto mb-2 opacity-30" />
                       <p className="text-sm">No notifications yet</p>
                     </div>
@@ -133,18 +126,18 @@ export const TopBar: React.FC<TopBarProps> = ({ title = 'BroFocus', subtitle }) 
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         onClick={() => markNotificationRead(n.id)}
-                        className={`px-4 py-3 border-b border-[#edf1ff] cursor-pointer transition-all hover:bg-slate-50 ${!n.read ? 'bg-primary/5' : ''}`}
+                        className={`px-4 py-3 border-b border-slate-200 cursor-pointer transition-all hover:bg-slate-50 ${!n.read ? 'bg-cyan-50/80' : 'bg-white'}`}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <p className={`text-xs font-semibold mb-0.5 ${notifTypeColors[n.type]}`}>{n.title}</p>
-                            <p className="text-xs leading-relaxed text-on-surface-variant">{n.message}</p>
-                            <p className="text-[10px] mt-1 text-on-surface-variant/70">
+                            <p className="text-xs leading-relaxed text-slate-600">{n.message}</p>
+                            <p className="text-[10px] mt-1 text-slate-500">
                               {format(new Date(n.created_at), 'h:mm a')}
                             </p>
                           </div>
-                          {!n.read && <div className="w-2 h-2 bg-primary rounded-full flex-shrink-0 mt-1" />}
-                          {n.read && <Check className="w-3.5 h-3.5 text-slate-500 flex-shrink-0 mt-0.5" />}
+                          {!n.read && <div className="w-2.5 h-2.5 bg-cyan-500 rounded-full flex-shrink-0 mt-1" />}
+                          {n.read && <Check className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />}
                         </div>
                       </motion.div>
                     ))
@@ -161,8 +154,12 @@ export const TopBar: React.FC<TopBarProps> = ({ title = 'BroFocus', subtitle }) 
             onClick={() => setShowProfileMenu((value) => !value)}
             className="flex items-center gap-2 rounded-full border border-[#dfe6ff] bg-white/80 px-2 py-1.5 shadow-sm transition hover:bg-white"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary to-sky-active text-xs font-bold text-white">
-              {user?.name?.[0]?.toUpperCase() || 'B'}
+            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary to-sky-active text-xs font-bold text-white">
+              {user?.avatar ? (
+                <img src={user.avatar} alt={user.name || 'Profile'} className="h-full w-full object-cover" />
+              ) : (
+                <span>{user?.name?.[0]?.toUpperCase() || 'B'}</span>
+              )}
             </div>
             <div className="hidden text-left lg:block">
               <div className="text-[11px] font-semibold text-on-surface">{user?.name || 'BroFocus User'}</div>
@@ -181,8 +178,12 @@ export const TopBar: React.FC<TopBarProps> = ({ title = 'BroFocus', subtitle }) 
               >
                 <div className="border-b border-[#edf1ff] px-3 py-2.5">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary to-sky-active text-xs font-bold text-white">
-                      {user?.name?.[0]?.toUpperCase() || 'B'}
+                    <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary to-sky-active text-xs font-bold text-white">
+                      {user?.avatar ? (
+                        <img src={user.avatar} alt={user.name || 'Profile'} className="h-full w-full object-cover" />
+                      ) : (
+                        <span>{user?.name?.[0]?.toUpperCase() || 'B'}</span>
+                      )}
                     </div>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-on-surface">{user?.name || 'BroFocus User'}</p>

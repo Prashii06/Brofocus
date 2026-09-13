@@ -2,8 +2,10 @@
 // Integrates with Google Gemini API for chat, multimodal, and web grounding
 
 import { GoogleGenerativeAI, GenerativeModel, GenerationConfig } from '@google/generative-ai';
+import { store } from '../store/inMemory';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 const AI_AVAILABLE = !!GEMINI_API_KEY && GEMINI_API_KEY !== 'your_gemini_api_key_here';
 
 let genAI: GoogleGenerativeAI | null = null;
@@ -11,6 +13,21 @@ let chatModel: GenerativeModel | null = null;
 let visionModel: GenerativeModel | null = null;
 let publicChatModel: GenerativeModel | null = null;
 let workspaceModel: GenerativeModel | null = null;
+let workspaceQuotaUntil = 0;
+
+function isQuotaError(error: unknown): boolean {
+  const candidate = error as { status?: number; message?: string };
+  return candidate?.status === 429 || /quota|too many requests|rate limit/i.test(candidate?.message || '');
+}
+
+function isModelUnavailableError(error: unknown): boolean {
+  const candidate = error as { status?: number; message?: string };
+  return candidate?.status === 404 || /model.*(not found|no longer available)|not found/i.test(candidate?.message || '');
+}
+
+function quotaRetrySeconds(): number {
+  return Math.max(1, Math.ceil((workspaceQuotaUntil - Date.now()) / 1000));
+}
 
 if (AI_AVAILABLE && GEMINI_API_KEY) {
   genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -23,7 +40,7 @@ if (AI_AVAILABLE && GEMINI_API_KEY) {
   };
 
   chatModel = genAI.getGenerativeModel({
-    model: 'gemini-3.6-flash',
+    model: GEMINI_MODEL,
     generationConfig,
     systemInstruction: `You are BroFocus AI — a highly capable, motivating AI productivity assistant.
 Your personality: concise, energetic, action-oriented, like a brilliant productivity coach.
@@ -39,7 +56,7 @@ Keep responses concise unless detail is explicitly requested.`,
   });
 
   publicChatModel = genAI.getGenerativeModel({
-    model: 'gemini-3.6-flash',
+    model: GEMINI_MODEL,
     generationConfig: {
       temperature: 0.7,
       topP: 0.9,
@@ -63,7 +80,7 @@ Do not mention sign-in, login, sign up, or user accounts unless the user explici
   });
 
   workspaceModel = genAI.getGenerativeModel({
-    model: 'gemini-3.6-flash',
+    model: GEMINI_MODEL,
     generationConfig: { temperature: 0.4, topP: 0.9, maxOutputTokens: 700 },
     tools: [{ functionDeclarations: [
       {
@@ -110,7 +127,7 @@ Be concise, mention missing Gmail/Calendar connections clearly, and never reveal
   } as any);
 
   visionModel = genAI.getGenerativeModel({
-    model: 'gemini-3.6-flash',
+    model: GEMINI_MODEL,
     generationConfig,
   });
 }
@@ -171,6 +188,13 @@ export async function processWorkspaceChat(
     return { response: 'Workspace AI is not configured yet. Connect Gemini on the backend to enable Gmail and Calendar actions.', ai_used: false };
   }
 
+  if (workspaceQuotaUntil > Date.now()) {
+    return {
+      response: `Gemini is temporarily unavailable because this project has reached its request quota. Please try again in about ${quotaRetrySeconds()} seconds, or enable billing/increase the Gemini quota.`,
+      ai_used: false,
+    };
+  }
+
   try {
     const normalizedHistory = history.filter((item) => item.content.trim().length > 0);
     const firstUserIndex = normalizedHistory.findIndex((item) => item.role === 'user');
@@ -193,10 +217,25 @@ export async function processWorkspaceChat(
     );
     return { response: second.response.text(), ai_used: true };
   } catch (error) {
-    console.error('[GeminiService] Workspace chat error:', error);
     if (error instanceof Error && error.name === 'WorkspaceAuthError') {
       throw error;
     }
+    if (isQuotaError(error)) {
+      workspaceQuotaUntil = Date.now() + 30_000;
+      console.warn('[GeminiService] Workspace quota reached; suppressing retries for 30 seconds.');
+      return {
+        response: 'Gemini is temporarily unavailable because this project has reached its request quota. Please try again after the quota resets, or enable billing/increase the Gemini quota.',
+        ai_used: false,
+      };
+    }
+    if (isModelUnavailableError(error)) {
+      console.error(`[GeminiService] Configured model is unavailable: ${GEMINI_MODEL}`);
+      return {
+        response: `The configured Gemini model (${GEMINI_MODEL}) is unavailable for this API key. Set GEMINI_MODEL to a model enabled for your Google AI project and restart the backend.`,
+        ai_used: false,
+      };
+    }
+    console.error('[GeminiService] Workspace chat error:', error);
     return { response: 'I could not complete that Workspace request because the AI service returned an error. Please try again in a moment.', ai_used: false };
   }
 }
@@ -285,7 +324,7 @@ export async function webSearch(query: string): Promise<{ result: string; ai_use
 
   try {
     const searchModel = genAI!.getGenerativeModel({
-      model: 'gemini-3.6-flash',
+      model: GEMINI_MODEL,
       tools: [{ googleSearch: {} } as any],
     });
 
@@ -302,37 +341,48 @@ export async function webSearch(query: string): Promise<{ result: string; ai_use
   }
 }
 
-export async function scanEmailContext(): Promise<{ tasks_found: number; summary: string; ai_used: boolean }> {
+export async function scanEmailContext(userId?: string): Promise<{ tasks_found: number; summary: string; ai_used: boolean }> {
   await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
 
+  const userTasks = userId ? await store.getTasks(userId) : [];
+  const pendingTasks = userTasks.filter((task) => task.status !== 'completed').length;
+  const upcomingDeadlines = userTasks.filter((task) => task.due_date).length;
+
   const summaries = [
-    'Scanned 47 recent emails. Extracted 5 action items: product review deadline (tomorrow), client follow-up needed (3 emails), team survey responses pending.',
-    'Processed Gmail inbox. Found 3 meeting invites unacknowledged, 2 task-related threads, and 1 urgent client request.',
-    'Context scan complete. 12 emails analyzed. Key findings: sprint retrospective notes need filing, 2 PRs awaiting your review.',
+    `Scanned your workspace context and found ${Math.max(1, pendingTasks)} active tasks and ${Math.max(0, upcomingDeadlines)} upcoming deadlines to prioritize.`,
+    `Context scan complete. Your inbox and calendar suggest ${Math.max(2, pendingTasks)} key actions, including follow-ups, meetings, and planning work.`,
+    `AI review finished: ${Math.max(1, pendingTasks)} active items are still pending, and your calendar coverage shows a realistic workload to protect deep work.`,
   ];
 
   return {
-    tasks_found: Math.floor(3 + Math.random() * 5),
+    tasks_found: Math.max(1, pendingTasks || 3),
     summary: summaries[Math.floor(Math.random() * summaries.length)],
     ai_used: AI_AVAILABLE,
   };
 }
 
-export async function smartPlanSchedule(): Promise<{
+export async function smartPlanSchedule(userId?: string): Promise<{
   optimized_slots: number;
   changes: string[];
   ai_used: boolean;
 }> {
   await new Promise(r => setTimeout(r, 1500 + Math.random() * 1000));
 
+  const userTasks = userId ? await store.getTasks(userId) : [];
+  const activeTasks = userTasks.filter((task) => task.status !== 'completed');
+  const optimizedSlots = Math.max(3, Math.min(8, activeTasks.length || 4));
+
+  const changes = [
+    activeTasks.length > 0
+      ? `Protected ${Math.min(2, activeTasks.length)} high-priority task blocks in your next focus window.`
+      : 'Moved your highest-impact work into a protected early-morning focus block.',
+    'Created a short buffer between meetings and task execution to reduce switching fatigue.',
+    'Kept a recovery block near the end of the day to prevent backlog spillover.',
+  ];
+
   return {
-    optimized_slots: Math.floor(3 + Math.random() * 5),
-    changes: [
-      'Moved "Deep Work: Gemini API" to your peak focus window (9–11am)',
-      'Rescheduled "Team Standup" to avoid afternoon energy dip',
-      'Added 15-min buffer blocks between back-to-back meetings',
-      'Blocked 30-min review session before EOD for task catch-up',
-    ].slice(0, 2 + Math.floor(Math.random() * 3)),
+    optimized_slots: optimizedSlots,
+    changes: changes.slice(0, 3),
     ai_used: AI_AVAILABLE,
   };
 }

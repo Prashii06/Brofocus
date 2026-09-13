@@ -143,4 +143,26 @@ router.get('/me', authenticate, async (req: Request, res: Response) => {
   });
 });
 
+router.patch('/avatar', authenticate, async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const { avatar } = req.body ?? {};
+
+  if (typeof avatar !== 'string' || avatar.trim().length === 0) {
+    return res.status(400).json({ error: 'Avatar data is required.' });
+  }
+
+  const user = await store.updateUser(userId, { avatar });
+  return res.json({
+    status: 'success',
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      avatar: user.avatar,
+      level: user.level,
+      productivity_points: user.productivity_points,
+    },
+  });
+});
+
 export default router;

@@ -38,7 +38,23 @@ export const SchedulePlanner: React.FC = () => {
     queryKey: ['schedule-timeline'],
     queryFn: async () => {
       const res = await scheduleApi.getTimeline();
-      return res.data.slots as ScheduleSlot[];
+      const timeBlocks = res.time_blocks ?? [];
+      return (timeBlocks as any[]).map((block) => {
+        const start = new Date(block.start);
+        const end = new Date(block.end);
+        const startTime = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
+        const endTime = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
+
+        return {
+          id: block.id,
+          title: block.title,
+          category: (block.type || 'focus') as ScheduleSlot['category'],
+          start_time: startTime,
+          end_time: endTime,
+          duration_minutes: Math.max(15, Math.round((end.getTime() - start.getTime()) / 60000)),
+          completed: Boolean(block.completed),
+        };
+      }) as ScheduleSlot[];
     },
   });
 
@@ -48,7 +64,7 @@ export const SchedulePlanner: React.FC = () => {
     onSuccess: (res) => {
       addNotification({
         title: 'Context Scan Initiated',
-        message: res.data.message || 'Gemini AI is scanning emails & calendar events...',
+        message: res.message || 'Gemini AI is scanning emails & calendar events...',
         type: 'ai',
       });
       queryClient.invalidateQueries({ queryKey: ['schedule-timeline'] });
@@ -59,7 +75,7 @@ export const SchedulePlanner: React.FC = () => {
   const smartPlanMutation = useMutation({
     mutationFn: () => scheduleApi.smartPlan(),
     onSuccess: (res) => {
-      const slots = res.data.optimized_slots || 4;
+      const slots = res.optimized_slots || 4;
       addNotification({
         title: 'Schedule Rebalanced',
         message: `Gemini AI rebalanced ${slots} task slots to eliminate overlaps and optimize energy windows.`,
@@ -76,34 +92,36 @@ export const SchedulePlanner: React.FC = () => {
     return slot.category === selectedCategory;
   });
 
+  const addSlotMutation = useMutation({
+    mutationFn: () => scheduleApi.createTimeBlock({
+      title: newTitle.trim(),
+      start: `${new Date().toISOString().split('T')[0]}T${newStartTime}:00`,
+      end: `${new Date().toISOString().split('T')[0]}T${newEndTime}:00`,
+      type: newCategory,
+    }),
+    onSuccess: (res) => {
+      addNotification({
+        title: 'Time Block Created',
+        message: res.message || `Added "${newTitle}" to your schedule.`,
+        type: 'success',
+      });
+      setNewTitle('');
+      setIsAddModalOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ['schedule-timeline'] });
+    },
+    onError: (error: any) => {
+      addNotification({
+        title: 'Could not save time block',
+        message: error?.response?.data?.error || 'Please try again.',
+        type: 'error',
+      });
+    },
+  });
+
   const handleAddSlot = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
-
-    // Simulate adding slot
-    const mockSlot: ScheduleSlot = {
-      id: 'slot-' + Date.now(),
-      title: newTitle,
-      category: newCategory,
-      start_time: newStartTime,
-      end_time: newEndTime,
-      duration_minutes: 60,
-      completed: false,
-    };
-
-    queryClient.setQueryData(['schedule-timeline'], (old: ScheduleSlot[] | undefined) => [
-      ...(old || []),
-      mockSlot,
-    ]);
-
-    addNotification({
-      title: 'Time Block Created',
-      message: `Added "${newTitle}" to your schedule for ${newStartTime}`,
-      type: 'info',
-    });
-
-    setNewTitle('');
-    setIsAddModalOpen(false);
+    addSlotMutation.mutate();
   };
 
   const hoursList = [

@@ -121,10 +121,21 @@ router.post('/confirm', async (req: Request, res: Response) => {
   if (!proposal || proposal.userId !== userId) return res.status(404).json({ error: 'Proposal expired or not found.' });
 
   try {
-    const result = proposal.type === 'calendar_event'
-      ? await createCalendarEvent(userId, proposal.payload as any)
-      : proposal.type === 'time_block'
-      ? await store.createTimeBlock({
+    let result: unknown;
+    let linkedTask: unknown;
+
+    if (proposal.type === 'calendar_event') {
+      result = await createCalendarEvent(userId, proposal.payload as any);
+      linkedTask = await store.createTask({
+        title: `Prepare for: ${String(proposal.payload.summary)}`,
+        description: proposal.payload.description ? String(proposal.payload.description) : 'Preparation task created from a scheduled meeting.',
+        priority: 'medium',
+        status: 'pending',
+        due_date: String(proposal.payload.start).slice(0, 10),
+        user_id: userId,
+      });
+    } else if (proposal.type === 'time_block') {
+      result = await store.createTimeBlock({
         user_id: userId,
         title: String(proposal.payload.title),
         start: String(proposal.payload.start),
@@ -132,7 +143,18 @@ router.post('/confirm', async (req: Request, res: Response) => {
         type: proposal.payload.type as TimeBlockType,
         color: proposal.payload.color ? String(proposal.payload.color) : undefined,
       })
-      : await store.createTask({
+      if (proposal.payload.type === 'meeting') {
+        linkedTask = await store.createTask({
+          title: `Prepare for: ${String(proposal.payload.title)}`,
+          description: 'Preparation task created from a scheduled meeting.',
+          priority: 'medium',
+          status: 'pending',
+          due_date: String(proposal.payload.start).slice(0, 10),
+          user_id: userId,
+        });
+      }
+    } else {
+      result = await store.createTask({
         title: String(proposal.payload.title),
         description: proposal.payload.description ? String(proposal.payload.description) : undefined,
         priority: proposal.payload.priority as TaskPriority,
@@ -140,8 +162,9 @@ router.post('/confirm', async (req: Request, res: Response) => {
         due_date: proposal.payload.due_date ? String(proposal.payload.due_date) : undefined,
         user_id: userId,
       });
+    }
     proposals.delete(proposalId);
-    return res.json({ status: 'success', type: proposal.type, result });
+    return res.json({ status: 'success', type: proposal.type, result, linked_task: linkedTask });
   } catch (error) {
     if (error instanceof WorkspaceAuthError) return res.status(409).json({ error: error.message, code: 'WORKSPACE_AUTH_REQUIRED' });
     console.error('[Workspace] Confirmation error:', error);

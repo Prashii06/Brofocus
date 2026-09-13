@@ -42,6 +42,7 @@ export const authApi = {
   google: (credential: string) => api.post('/auth/google', { credential }).then((r) => r.data),
   me: () => api.get('/auth/me').then((r) => r.data),
   logout: () => api.post('/auth/logout').then((r) => r.data),
+  updateAvatar: (avatar: string) => api.patch('/auth/avatar', { avatar }).then((r) => r.data),
 };
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
@@ -61,6 +62,8 @@ export const scheduleApi = {
   smartPlan: () => api.post('/schedule/smart-plan').then((r) => r.data),
   getTimeline: (view: 'day' | 'week' = 'day', date?: string) =>
     api.get('/schedule/timeline', { params: { view, date } }).then((r) => r.data),
+  createTimeBlock: (payload: { title: string; start: string; end: string; type?: string; color?: string }) =>
+    api.post('/schedule/time-blocks', payload).then((r) => r.data),
 };
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
@@ -72,8 +75,14 @@ export const analyticsApi = {
 // ─── Engagement ───────────────────────────────────────────────────────────────
 export const engagementApi = {
   autoSync: () => api.post('/engagement/auto-sync').then((r) => r.data),
-  getMorningKickoff: () => api.get('/engagement/morning-kickoff').then((r) => r.data),
-  getEveningWrap: () => api.get('/engagement/evening-wrap').then((r) => r.data),
+  getMorningKickoff: async () => {
+    const res = await api.get('/engagement/morning-kickoff');
+    return res.data?.kickoff ?? res.data;
+  },
+  getEveningWrap: async () => {
+    const res = await api.get('/engagement/evening-wrap');
+    return res.data?.wrap ?? res.data;
+  },
   sendNotification: (data: { type: string; title: string; message: string }) =>
     api.post('/engagement/notifications', data).then((r) => r.data),
   dispatchNotification: (title: string, message: string, type: string) =>

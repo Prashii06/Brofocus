@@ -17,7 +17,7 @@ export const Dashboard: React.FC = () => {
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { setTasks, triggerXPAnimation, updateUserPoints, setNotifications, notifications } = useAppStore();
+  const { setTasks, triggerXPAnimation, updateUserPoints, setNotifications, setStreakCount } = useAppStore();
 
   // Fetch tasks
   const { data: tasksData } = useQuery<{ tasks: KanbanData }>({
@@ -59,6 +59,21 @@ export const Dashboard: React.FC = () => {
       setTasks(tasksData.tasks as KanbanData);
     }
   }, [tasksData, setTasks]);
+
+  useEffect(() => {
+    const streakDays = kickoffData?.kickoff?.streak_days;
+    if (streakDays !== undefined) setStreakCount(streakDays);
+  }, [kickoffData?.kickoff?.streak_days, setStreakCount]);
+
+  useEffect(() => {
+    const refreshDashboardData = () => {
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      void queryClient.invalidateQueries({ queryKey: ['morning-kickoff'] });
+      void queryClient.invalidateQueries({ queryKey: ['schedule-timeline'] });
+    };
+    window.addEventListener('brofocus-data-changed', refreshDashboardData);
+    return () => window.removeEventListener('brofocus-data-changed', refreshDashboardData);
+  }, [queryClient]);
 
   const tasks = tasksData?.tasks || { pending: [], in_progress: [], completed: [] };
   const kickoff = kickoffData?.kickoff;
@@ -321,53 +336,8 @@ export const Dashboard: React.FC = () => {
             </motion.div>
           </div>
 
-          {/* Right: AI Assistant Quick + Meetings */}
+          {/* Right: Today's Schedule */}
           <div className="space-y-6">
-            {/* AI Quick Chat */}
-            <motion.div
-              initial={{ opacity: 0, x: 15 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.35 }}
-              className="card"
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-xl bg-violet-500/20 flex items-center justify-center border border-violet-500/30">
-                  <Cpu className="w-4 h-4 text-violet-400" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-white">BroFocus AI</h3>
-                  <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Powered by Gemini</p>
-                </div>
-                <div className="ml-auto flex items-center gap-1.5">
-                  <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                  <span className="text-[10px] text-emerald-400">Online</span>
-                </div>
-              </div>
-              <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
-                Ask me to schedule tasks, analyze your focus patterns, or search the web.
-              </p>
-              <div className="space-y-2 mb-3">
-                {[
-                  '📊 Analyze my productivity',
-                  '📅 Optimize my schedule',
-                  '🔍 Search latest AI news',
-                ].map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    onClick={() => navigate('/assistant')}
-                    className="w-full text-left px-3 py-2 rounded-lg text-xs transition-all hover:bg-violet-500/10 border border-transparent hover:border-violet-500/20"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-              <button onClick={() => navigate('/assistant')} className="btn-primary w-full text-sm justify-center">
-                <Cpu className="w-4 h-4" /> Open AI Chat
-              </button>
-            </motion.div>
-
-            {/* Today's Schedule */}
             <motion.div
               initial={{ opacity: 0, x: 15 }}
               animate={{ opacity: 1, x: 0 }}

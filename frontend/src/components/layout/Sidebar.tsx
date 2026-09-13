@@ -96,8 +96,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ open: propOpen, onToggle: prop
       {/* User Profile Footer */}
       <div className="sticky bottom-0 z-10 p-3 border-t border-[#dfe6ff] bg-white">
         <div className="flex items-center gap-3 p-2 rounded-xl bg-slate-50 border border-[#dfe6ff]">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-sky-active flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-            {user?.name?.[0] || 'B'}
+          <div className="w-8 h-8 rounded-lg overflow-hidden bg-gradient-to-br from-primary to-sky-active flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+            {user?.avatar ? (
+              <img src={user.avatar} alt={user.name || 'Profile'} className="h-full w-full object-cover" />
+            ) : (
+              <span>{user?.name?.[0]?.toUpperCase() || 'B'}</span>
+            )}
           </div>
           <AnimatePresence>
             {open && (

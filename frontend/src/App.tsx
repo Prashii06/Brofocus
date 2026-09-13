@@ -33,7 +33,7 @@ const ToastOverlay: React.FC = () => {
   const { notifications, removeNotification } = useAppStore();
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+    <div className="fixed bottom-28 right-5 z-[60] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2 pointer-events-none sm:right-8">
       <AnimatePresence>
         {notifications.slice(0, 3).map((n) => (
           <motion.div
@@ -41,20 +41,20 @@ const ToastOverlay: React.FC = () => {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            className={`pointer-events-auto p-3.5 rounded-xl border shadow-2xl backdrop-blur-md flex items-start gap-3 ${
+            className={`pointer-events-auto flex items-start gap-3 rounded-2xl border p-3.5 shadow-lg ${
               n.type === 'success'
-                ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-200'
+                ? 'border-emerald-200 bg-emerald-50 text-slate-800'
                 : n.type === 'error'
-                ? 'bg-rose-950/90 border-rose-500/40 text-rose-200'
+                ? 'border-rose-200 bg-rose-50 text-slate-800'
                 : n.type === 'ai'
-                ? 'bg-violet-950/90 border-violet-500/40 text-violet-200'
-                : 'bg-slate-900/90 border-cyan-500/40 text-slate-200'
+                ? 'border-indigo-200 bg-indigo-50 text-slate-800'
+                : 'border-cyan-200 bg-cyan-50 text-slate-800'
             }`}
           >
             <div className="mt-0.5 shrink-0">
               {n.type === 'success' && <CheckCircle size={16} className="text-emerald-400" />}
               {n.type === 'error' && <AlertCircle size={16} className="text-rose-400" />}
-              {n.type === 'ai' && <Zap size={16} className="text-violet-400" />}
+              {n.type === 'ai' && <Zap size={16} className="text-indigo-600" />}
               {n.type === 'info' && <Info size={16} className="text-cyan-400" />}
             </div>
 
@@ -65,7 +65,7 @@ const ToastOverlay: React.FC = () => {
 
             <button
               onClick={() => removeNotification(n.id)}
-              className="text-slate-400 hover:text-slate-200 p-0.5 rounded-lg hover:bg-white/10"
+              className="rounded-lg p-0.5 text-slate-500 hover:bg-black/5 hover:text-slate-800"
             >
               <X size={14} />
             </button>
@@ -86,6 +86,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           {children}
         </main>
       </div>
+      <FloatingChatbot />
       <ToastOverlay />
     </div>
   );
@@ -119,7 +120,6 @@ export const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <FloatingChatbot />
         <Routes>
           <Route path="/landing" element={<Landing />} />
           <Route path="/login" element={<Navigate to="/landing" replace />} />

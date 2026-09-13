@@ -24,7 +24,6 @@ export const Integrations: React.FC = () => {
   const queryClient = useQueryClient();
   const addNotification = useAppStore((state) => state.addNotification);
   const [selectedProviderModal, setSelectedProviderModal] = useState<string | null>(null);
-  const [localStatusOverrides, setLocalStatusOverrides] = useState<Record<string, { connected: boolean; email?: string; connected_at?: string }>>({});
 
   // Query status
   const { data: statusMap, isLoading, refetch } = useQuery({
@@ -34,7 +33,8 @@ export const Integrations: React.FC = () => {
     refetchOnWindowFocus: true,
     queryFn: async () => {
       const res = await integrationsApi.getStatus();
-      return res.data.integrations as Record<
+      const integrations = res?.integrations ?? res?.data?.integrations ?? {};
+      return integrations as Record<
         string,
         { connected: boolean; email?: string; connected_at?: string }
       >;
@@ -42,6 +42,7 @@ export const Integrations: React.FC = () => {
   });
 
   useEffect(() => {
+    const refreshStatus = async () => {
     const params = new URLSearchParams(window.location.search);
     const connected = params.get('connected');
     const error = params.get('error');
@@ -56,21 +57,8 @@ export const Integrations: React.FC = () => {
         type: 'success',
       });
 
-      setLocalStatusOverrides((prev) => connectedProviders.reduce((next, provider) => ({
-        ...next,
-        [provider]: { connected: true, connected_at: new Date().toISOString() },
-      }), prev));
-
-      queryClient.setQueryData<Record<string, { connected: boolean; email?: string; connected_at?: string }>>(
-        ['integrations-status'],
-        (previous) => connectedProviders.reduce((next, provider) => ({
-          ...(next || {}),
-          [provider]: { ...(next?.[provider] || {}), connected: true, connected_at: new Date().toISOString() },
-        }), previous || {})
-      );
-
-      queryClient.invalidateQueries({ queryKey: ['integrations-status'] });
-      void refetch();
+      await queryClient.invalidateQueries({ queryKey: ['integrations-status'], refetchType: 'none' });
+      await refetch({ cancelRefetch: false });
       window.history.replaceState({}, '', '/integrations');
     }
 
@@ -80,10 +68,13 @@ export const Integrations: React.FC = () => {
         message: detail || `Google authorization failed: ${error}`,
         type: 'error',
       });
-      queryClient.invalidateQueries({ queryKey: ['integrations-status'] });
-      void refetch();
+      await queryClient.invalidateQueries({ queryKey: ['integrations-status'], refetchType: 'none' });
+      await refetch({ cancelRefetch: false });
       window.history.replaceState({}, '', '/integrations');
     }
+    };
+
+    void refreshStatus();
   }, [addNotification, queryClient, refetch]);
 
   // Connect mutation
@@ -110,7 +101,7 @@ export const Integrations: React.FC = () => {
         message: `Disconnected ${provider.replace('_', ' ')}.`,
         type: 'info',
       });
-      queryClient.invalidateQueries({ queryKey: ['integrations-status'] });
+      void queryClient.refetchQueries({ queryKey: ['integrations-status'], type: 'active' });
     },
   });
 
@@ -145,10 +136,7 @@ export const Integrations: React.FC = () => {
     },
   ];
 
-  const currentStatus = {
-    ...(statusMap || {}),
-    ...localStatusOverrides,
-  };
+  const currentStatus = statusMap || {};
 
   return (
     <div className="space-y-6 pb-12">
@@ -156,7 +144,7 @@ export const Integrations: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
               <LinkIcon className="text-cyan-400" size={26} />
               Ecosystem Integrations
             </h1>
@@ -164,12 +152,12 @@ export const Integrations: React.FC = () => {
               OAuth 2.0
             </span>
           </div>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="text-sm text-slate-600 mt-1">
             Connect your Google Workspace services to grant Gemini AI permission for contextual context scanning.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-400">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-700 shadow-sm">
           <ShieldCheck size={14} className="text-emerald-400" />
           <span>Enterprise Token Encryption (AES-256)</span>
         </div>
