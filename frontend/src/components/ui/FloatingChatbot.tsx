@@ -1,5 +1,6 @@
 import React, { FormEvent, useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQueryClient } from '@tanstack/react-query';
 import { Bot, Loader2, Mic, Send, X, Maximize2, Minimize2, LogOut, PanelLeft, User, Search, Sparkles } from 'lucide-react';
 import { publicChatApi, workspaceApi } from '../../api/client';
 import { signOutCurrentUser } from '../../utils/auth';
@@ -47,6 +48,7 @@ const starterMessage: ChatMessage = {
 
 export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = false }) => {
   const { user, logout } = useAppStore();
+  const queryClient = useQueryClient();
   const isPublicAssistant = publicMode;
   const [open, setOpen] = useState(false);
   const [maximized, setMaximized] = useState(false);
@@ -129,6 +131,9 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = f
       const response = publicMode
         ? await publicChatApi.chat(message)
         : await workspaceApi.chat(message);
+      if (!publicMode) {
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      }
       if (response.proposal) setProposal(response.proposal);
       streamResponse(response.response);
     } catch (error: any) {
@@ -164,7 +169,12 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ publicMode = f
   const confirmProposal = async (confirmed: boolean) => {
     if (!proposal) return;
     try {
-      if (confirmed) await workspaceApi.confirm(proposal.proposal_id, true);
+      if (confirmed) {
+        await workspaceApi.confirm(proposal.proposal_id, true);
+        if (proposal.type === 'task') {
+          queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        }
+      }
       setMessages((current) => [...current, { role: 'model', content: confirmed ? 'Done. I applied the confirmed change.' : 'No changes made. I discarded that proposal.' }]);
     } catch (error: any) {
       setMessages((current) => [...current, { role: 'model', content: error?.response?.data?.error || 'The confirmed action could not be completed.' }]);

@@ -101,7 +101,7 @@ export const Dashboard: React.FC = () => {
     },
     {
       label: 'Focus Hours',
-      value: `${kickoff ? 7.5 : '—'}h`,
+      value: `${kickoff?.focus_hours ?? 0}h`,
       icon: <Clock className="w-5 h-5 text-cyan-400" />,
       color: 'from-cyan-500/15 to-cyan-600/5',
       border: 'border-cyan-500/20',
